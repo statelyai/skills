@@ -1,5 +1,5 @@
 ---
-name: readme-ref
+name: readme
 description: Keep README files in sync with the codebase using symbolic HTML comments. Use this skill whenever modifying code that could affect documentation — exported APIs, configuration, examples, CLI commands, dependencies, or any construct referenced by an HTML comment in a markdown file. Also use when authoring or editing README files to add or update symbolic comments. Trigger on any code change that touches public interfaces, package metadata, or files referenced by README comments.
 ---
 
@@ -25,18 +25,21 @@ HTML comments in markdown files act as declarative queries over the codebase —
 
 A comment is a symbolic reference if it describes content derivable from source — references to files/modules, package metadata, code constructs, or consistency constraints (`consistent with`, `matching`, `derived from`). Purely editorial comments (`<!-- TODO: rewrite -->`) are not symbolic references.
 
+References can be **path-qualified** (`exported functions from src/index.ts`) or **logical** (`all exported creator functions`, `public API of the state module`, `supported config options`). Resolve logical references by searching the codebase for constructs that match the description — don't require a filename.
+
 ## When you change code
 
 1. **Scan** all markdown files for symbolic comments: `grep -rl '<!--' --include='*.md' .`
-2. **Check relevance** — does your change affect the content each comment describes?
+2. **Check relevance** — does your change affect the content each comment describes? For logical references, resolve them against the codebase first, then check if the changed file/symbol falls in that set.
 3. **Regenerate** affected sections: read the referenced source, extract the described construct, format to match existing style, replace only the content below the comment. Preserve the comment itself.
 4. **Preserve** surrounding prose and sections without comments.
+5. **Backfill comments on unannotated READMEs** — if a README has no symbolic comments but contains sections that clearly describe the code you just changed (API tables, install commands, config lists, CLI usage), infer the symbolic reference and insert a comment above that section before regenerating. Only backfill sections actually affected by the current change; don't rewrite the whole README. If the inferred reference is ambiguous, flag it instead of guessing.
 
 If a comment references something that no longer exists, flag it to the user rather than silently removing the section.
 
 ## When you author a README
 
-Add a symbolic comment above any section that reflects code. Good comments are specific (`<!-- exported functions from src/index.ts -->` not `<!-- API docs -->`), scoped to one concept, and reference logical constructs rather than line numbers.
+Add a symbolic comment above any section that reflects code. Good comments are specific (`<!-- exported functions from src/index.ts -->` or `<!-- all exported creator functions -->` — not `<!-- API docs -->`), scoped to one concept, and reference logical constructs rather than line numbers. Prefer logical descriptions when the set spans multiple files or may move.
 
 ## Scope
 
