@@ -1,0 +1,4 @@
+interface:
+  display_name: "README References"
+  short_description: "Keep README sections synced with code"
+  default_prompt: "Use $readme-ref to update README sections that should stay consistent with the codebase."
