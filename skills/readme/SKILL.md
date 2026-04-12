@@ -1,6 +1,6 @@
 ---
 name: readme
-description: Keep README files in sync with the codebase using symbolic HTML comments. Use this skill whenever modifying code that could affect documentation — exported APIs, configuration, examples, CLI commands, dependencies, or any construct referenced by an HTML comment in a markdown file. Also use when authoring or editing README files to add or update symbolic comments. Trigger on any code change that touches public interfaces, package metadata, or files referenced by README comments.
+description: Keep README files in sync with the repo using symbolic HTML comments. Use this skill whenever making a repo change that could affect documentation — code (exported APIs, configuration, examples, CLI commands, dependencies), repo structure (adding/removing/renaming files, directories, packages, or other sibling entries referenced by a listing comment), or metadata (package.json, manifests). Also use when authoring or editing README files to add or update symbolic comments. Trigger on any change — code or structural — that touches a construct referenced by an HTML comment in a markdown file.
 ---
 
 # Symbolic README References
@@ -27,7 +27,7 @@ A comment is a symbolic reference if it describes content derivable from source 
 
 References can be **path-qualified** (`exported functions from src/index.ts`) or **logical** (`all exported creator functions`, `public API of the state module`, `supported config options`). Resolve logical references by searching the codebase for constructs that match the description — don't require a filename.
 
-## When you change code
+## When you change the repo
 
 1. **Scan** all markdown files for symbolic comments: `grep -rl '<!--' --include='*.md' .`
 2. **Check relevance** — does your change affect the content each comment describes? For logical references, resolve them against the codebase first, then check if the changed file/symbol falls in that set.
@@ -39,7 +39,7 @@ If a comment references something that no longer exists, flag it to the user rat
 
 ## When you author a README
 
-Add a symbolic comment above any section that reflects code. Good comments are specific (`<!-- exported functions from src/index.ts -->` or `<!-- all exported creator functions -->` — not `<!-- API docs -->`), scoped to one concept, and reference logical constructs rather than line numbers. Prefer logical descriptions when the set spans multiple files or may move.
+Add a symbolic comment above any section that reflects the repo (code, structure, or metadata). Good comments are specific (`<!-- exported functions from src/index.ts -->` or `<!-- all exported creator functions -->` — not `<!-- API docs -->`), scoped to one concept, and reference logical constructs rather than line numbers. Prefer logical descriptions when the set spans multiple files or may move.
 
 ## Scope
 
