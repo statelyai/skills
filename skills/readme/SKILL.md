@@ -29,7 +29,7 @@ References can be **path-qualified** (`exported functions from src/index.ts`) or
 
 ## When you change the repo
 
-1. **Scan** all markdown files for symbolic comments: `grep -rl '<!--' --include='*.md' .`
+1. **Scan** all non-gitignored markdown files for symbolic comments: `rg -l '<!--' --glob '*.md' .`
 2. **Check relevance** — does your change affect the content each comment describes? For logical references, resolve them against the codebase first, then check if the changed file/symbol falls in that set.
 3. **Regenerate** affected sections: read the referenced source, extract the described construct, format to match existing style, replace only the content below the comment. Preserve the comment itself.
 4. **Preserve** surrounding prose and sections without comments.
@@ -43,4 +43,4 @@ Add a symbolic comment above any section that reflects the repo (code, structure
 
 ## Scope
 
-Apply to all markdown files in the full project tree — `README.md`, `packages/*/README.md`, `src/**/README.md`, `docs/**/*.md`, `CONTRIBUTING.md`, etc.
+Apply to all non-gitignored markdown files in the project tree — `README.md`, `packages/*/README.md`, `src/**/README.md`, `docs/**/*.md`, `CONTRIBUTING.md`, etc.
