@@ -29,14 +29,52 @@ def harness_dir(skill_dir: Path) -> Path:
     return workspace_dir(skill_dir) / "ts-harness"
 
 
+def candidate_xstate_roots(script_path: Path) -> list[Path]:
+    skill_dir = skill_dir_from_script(script_path)
+    repo_root = skill_dir.parents[1]
+    candidates: list[Path] = []
+
+    env_root = Path.cwd()
+    env_value = None
+    try:
+        import os
+
+        env_value = os.environ.get("XSTATE_REPO")
+    except Exception:
+        env_value = None
+
+    if env_value:
+        candidates.append(Path(env_value).expanduser())
+
+    candidates.extend(
+        [
+            repo_root.parent / "xstate",
+            repo_root / "xstate",
+            env_root / "xstate",
+            env_root.parent / "xstate",
+        ]
+    )
+
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique.append(resolved)
+    return unique
+
+
 def read_local_versions() -> tuple[str, str]:
-    xstate_pkg = Path("/Users/davidkpiano/Code/xstate/packages/core/package.json")
-    react_pkg = Path("/Users/davidkpiano/Code/xstate/packages/xstate-react/package.json")
-    if xstate_pkg.exists() and react_pkg.exists():
-        return (
-            json.loads(xstate_pkg.read_text())["version"],
-            json.loads(react_pkg.read_text())["version"],
-        )
+    for root in candidate_xstate_roots(Path(__file__)):
+        xstate_pkg = root / "packages/core/package.json"
+        react_pkg = root / "packages/xstate-react/package.json"
+        if xstate_pkg.exists() and react_pkg.exists():
+            return (
+                json.loads(xstate_pkg.read_text())["version"],
+                json.loads(react_pkg.read_text())["version"],
+            )
     return ("5.30.0", "6.1.0")
 
 

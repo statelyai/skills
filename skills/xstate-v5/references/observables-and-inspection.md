@@ -18,9 +18,9 @@ Use it when:
 
 Prefer `fromCallback(...)` instead when the source is a callback/listener API rather than an observable.
 
-Local anchor:
+Reference anchor:
 
-- typed `fromObservable(...)` example: [/Users/davidkpiano/Code/xstate/packages/core/CHANGELOG.md](/Users/davidkpiano/Code/xstate/packages/core/CHANGELOG.md:645)
+- typed `fromObservable(...)` example: [xstate core changelog](https://github.com/statelyai/xstate/blob/main/packages/core/CHANGELOG.md)
 
 Minimal shape:
 
@@ -52,9 +52,9 @@ This is useful when:
 
 It accepts either a function or an observer and returns a subscription.
 
-Local anchor:
+Reference anchor:
 
-- `actor.system.inspect(...)` usage and unsubscribe behavior: [/Users/davidkpiano/Code/xstate/packages/core/test/inspect.test.ts](/Users/davidkpiano/Code/xstate/packages/core/test/inspect.test.ts:367)
+- `actor.system.inspect(...)` usage and unsubscribe behavior: [inspect test](https://github.com/statelyai/xstate/blob/main/packages/core/test/inspect.test.ts)
 
 Minimal shape:
 
@@ -76,9 +76,9 @@ sub.unsubscribe();
 
 When the user wants visual debugging in an app, prefer `@statelyai/inspect` with `createBrowserInspector(...)`.
 
-Local anchor:
+Reference anchor:
 
-- React template wiring: [/Users/davidkpiano/Code/xstate/templates/react-ts/src/App.tsx](/Users/davidkpiano/Code/xstate/templates/react-ts/src/App.tsx:1)
+- React template wiring: [React TypeScript template](https://github.com/statelyai/xstate/blob/main/templates/react-ts/src/App.tsx)
 
 Minimal shape:
 

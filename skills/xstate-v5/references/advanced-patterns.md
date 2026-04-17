@@ -51,10 +51,10 @@ const flushIfNeeded = machineSetup.enqueueActions(({ context, enqueue }) => {
 });
 ```
 
-Local anchors:
+Reference anchors:
 
-- setup-scoped typed helpers: [/Users/davidkpiano/Code/xstate/packages/core/CHANGELOG.md](/Users/davidkpiano/Code/xstate/packages/core/CHANGELOG.md:254)
-- `enqueueActions(...)` in a real machine: [/Users/davidkpiano/Code/xstate/examples/tiles/src/tilesMachine.ts](/Users/davidkpiano/Code/xstate/examples/tiles/src/tilesMachine.ts:1)
+- setup-scoped typed helpers: [xstate core changelog](https://github.com/statelyai/xstate/blob/main/packages/core/CHANGELOG.md)
+- `enqueueActions(...)` in a real machine: [tiles machine example](https://github.com/statelyai/xstate/blob/main/examples/tiles/src/tilesMachine.ts)
 
 ## Prefer event payloads over context relay
 
@@ -96,10 +96,10 @@ When writing callback-actor examples:
 - prefer sending domain events like `upload.progress` or `timer.ticked` back to the parent
 - keep only durable results in context; avoid storing raw callback payloads unless the machine truly needs them later
 
-Local anchors:
+Reference anchors:
 
-- callback actor with recurring events: [/Users/davidkpiano/Code/xstate/examples/workflow-check-inbox/main.ts](/Users/davidkpiano/Code/xstate/examples/workflow-check-inbox/main.ts:1)
-- callback actor for ticking input: [/Users/davidkpiano/Code/xstate/examples/stopwatch/src/stopwatchMachine.ts](/Users/davidkpiano/Code/xstate/examples/stopwatch/src/stopwatchMachine.ts:1)
+- callback actor with recurring events: [workflow inbox example](https://github.com/statelyai/xstate/blob/main/examples/workflow-check-inbox/main.ts)
+- callback actor for ticking input: [stopwatch machine example](https://github.com/statelyai/xstate/blob/main/examples/stopwatch/src/stopwatchMachine.ts)
 
 Minimal upload-style callback pattern:
 
@@ -208,9 +208,9 @@ Prefer emitted events when:
 
 Use `types.emitted` plus `machineSetup.emit(...)` for typed emitted events.
 
-Local anchor:
+Reference anchor:
 
-- typed emitted events and `machineSetup.emit(...)`: [/Users/davidkpiano/Code/xstate/packages/core/CHANGELOG.md](/Users/davidkpiano/Code/xstate/packages/core/CHANGELOG.md:254)
+- typed emitted events and `machineSetup.emit(...)`: [xstate core changelog](https://github.com/statelyai/xstate/blob/main/packages/core/CHANGELOG.md)
 
 ## Avoid over-modeling the parent machine
 
@@ -251,8 +251,8 @@ Be careful about older examples that use `state:` in actor options. For current 
 
 For migration or repair tasks, do not keep dead implementation override objects alive by passing them into `useMachine(...)` if the current hook does not accept them. Either move real implementations into `setup(...)`/machine config or remove dead overrides if they are unused.
 
-Local anchors:
+Reference anchors:
 
-- persisted snapshot save/restore flow: [/Users/davidkpiano/Code/xstate/examples/mongodb-persisted-state/main.ts](/Users/davidkpiano/Code/xstate/examples/mongodb-persisted-state/main.ts:14)
-- persisted snapshot in an API workflow example: [/Users/davidkpiano/Code/xstate/examples/express-workflow/index.ts](/Users/davidkpiano/Code/xstate/examples/express-workflow/index.ts:27)
-- React adapter tests using `snapshot` hydration: [/Users/davidkpiano/Code/xstate/packages/xstate-react/test/createActorContext.test.tsx](/Users/davidkpiano/Code/xstate/packages/xstate-react/test/createActorContext.test.tsx:435)
+- persisted snapshot save/restore flow: [MongoDB persisted state example](https://github.com/statelyai/xstate/blob/main/examples/mongodb-persisted-state/main.ts)
+- persisted snapshot in an API workflow example: [Express workflow example](https://github.com/statelyai/xstate/blob/main/examples/express-workflow/index.ts)
+- React adapter tests using `snapshot` hydration: [createActorContext test](https://github.com/statelyai/xstate/blob/main/packages/xstate-react/test/createActorContext.test.tsx)
