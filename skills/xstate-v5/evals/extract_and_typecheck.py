@@ -22,7 +22,8 @@ def skill_dir_from_script(script_path: Path) -> Path:
 
 
 def workspace_dir(skill_dir: Path) -> Path:
-    return skill_dir.parent / f"{skill_dir.name}-workspace"
+    repo_root = skill_dir.parents[1]
+    return repo_root / ".skill-workspaces" / skill_dir.name
 
 
 def harness_dir(skill_dir: Path) -> Path:

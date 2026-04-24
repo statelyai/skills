@@ -101,6 +101,7 @@ For **new code**, prefer these patterns unless the local codebase has a strong r
 - Prefer action and guard objects such as `{ type: 'track' }` or `{ type: 'isValid', params: ... }` when the intent is reusable or named.
 - Prefer `tags: []` for UI semantics and cross-cutting state meaning.
 - Prefer domain-oriented event names; preserve local naming conventions if they are already established.
+- In parallel states, keep transitions local to the region or substate whose lifecycle should change. Avoid region-root transitions that target sibling regions or use `reenter: true` unless resetting that whole source region is intentional.
 - Prefer plain functions for derived values instead of storing derivable data in context.
 - Prefer event payloads over temporary context relay when one state only needs to pass data to the next step.
 - Prefer passing data into named actions and guards via `params` instead of reaching into `event` directly.
@@ -148,6 +149,7 @@ When reviewing or fixing XState code, look for:
 - extra booleans that should be replaced by `matches(...)`, tags, or selectors
 - missed opportunities to use `@xstate/store` when the problem is simple
 - named `assign(...)` actions whose property updaters implicitly expect different `params` shapes
+- parallel-region root transitions that target sibling regions or use `reenter: true`; in v5 these can re-enter the source region, reset it to its initial substate, and cancel in-flight invokes
 
 Avoid pushing decomposition too far. Actor boundaries are useful when they improve clarity, ownership, or concurrency. Do not split for its own sake.
 
@@ -171,6 +173,7 @@ For migration tasks:
 - explain any non-local refactor you choose to make
 - do not preserve dead or invalid hook option patterns just because they existed nearby
 - when migrating React usage, prefer valid current hook surfaces over trying to smuggle old `interpret`-style implementation overrides into `useMachine(...)`
+- inspect `type: 'parallel'` region-root transitions before copying v4 shapes into v5; move handlers down to the owning substate/region, or coordinate from a parent only when broader re-entry is intentional
 
 Use `references/v4-to-v5-quick-ref.md` for quick translation patterns.
 

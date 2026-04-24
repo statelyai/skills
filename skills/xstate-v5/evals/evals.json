@@ -71,6 +71,20 @@
         "The extracted TypeScript compiles under the eval typecheck harness.",
         "The answer briefly explains why snapshot-based persistence is preferred."
       ]
+    },
+    {
+      "id": 6,
+      "prompt": "migrate this to xstate v5\n\n```ts\nimport { createMachine } from 'xstate';\n\nexport const syncMachine = createMachine({\n  id: 'sync',\n  type: 'parallel',\n  states: {\n    editor: {\n      initial: 'idle',\n      states: {\n        idle: {},\n        dirty: {\n          invoke: {\n            src: 'autosaveDraft'\n          }\n        }\n      },\n      on: {\n        EDIT: { target: '.dirty' },\n        SYNC: { target: '#sync.network.syncing' },\n        TYPE: { target: '.dirty', internal: false }\n      }\n    },\n    network: {\n      initial: 'offline',\n      states: {\n        offline: {},\n        syncing: {},\n        online: {}\n      }\n    }\n  }\n});\n```",
+      "expected_output": "A v5 migration that preserves parallel-region behavior instead of blindly translating region-root transitions that reset source regions.",
+      "files": [],
+      "expectations": [
+        "The answer identifies or fixes the parallel-region migration trap where a region-root transition targeting a sibling region can re-enter and reset the source region in v5.",
+        "The migrated code does not keep `SYNC` as an `editor` region-root transition targeting `network.syncing` unless it explicitly explains that resetting `editor` is intended.",
+        "The answer handles the old `internal: false` self-reentry by using `reenter: true` only at the substate whose lifecycle should restart, not by copying it to the `editor` region root.",
+        "The answer preserves the local machine shape and does not turn the example into an unrelated broad redesign.",
+        "The extracted TypeScript compiles under the eval typecheck harness.",
+        "The answer briefly explains the behavior-preserving migration choice."
+      ]
     }
   ]
 }
