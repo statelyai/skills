@@ -1,0 +1,4 @@
+.skill-workspaces/
+eval-workspaces/
+skills/*-workspace/
+skills/**/__pycache__/
