@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "stately": {
+      "type": "http",
+      "url": "https://mcp.stately.ai/mcp"
+    },
+    "stately-channel": {
+      "command": "npx",
+      "args": ["-y", "@statelyai/mcp@latest", "channel"]
+    }
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "version": "pstack-claude 0.9.125",
+  "source": "https://github.com/michael-denyer/pstack-claude",
+  "commit": "7641b0dd92464194d087906f4588c0bbbccdb5d8",
+  "officialSource": "https://github.com/cursor/plugins",
+  "officialCommit": "ae5650febf4320793844c12c4adaa937f417f8da",
+  "files": {
+    "backends/cfg.ts": {
+      "upstreamSha256": "aea4d8766d214e7fa08f4881f1037319655e75eb56652e1b6d5d4f13a162e3e1"
+    },
+    "backends/mermaid.ts": {
+      "upstreamSha256": "75704b2704a9399a39479ff704a580d5b9a1d0fede01fe771df28bf799b434b6"
+    },
+    "backends/plain-text.ts": {
+      "upstreamSha256": "e2bedb855eb3806ec3fe7a7bfa49baa309fb4cf0da425b5fe1e0686268ce255a"
+    },
+    "backends/report.ts": {
+      "upstreamSha256": "730b4048578ab0468e1581f16fec60b246e321161effb68e481efb373f0f2501"
+    },
+    "frontends/config.ts": {
+      "upstreamSha256": "5eeab1e755f20a2c83b408c6503fdc9c6b10c971d8dedad3f912bd15f9763daf"
+    },
+    "frontends/dot.ts": {
+      "upstreamSha256": "4eef9ec848557dcd01ca8dbbec75b71c0653c1b73583108bafbb6f559f6d677b"
+    },
+    "frontends/marks.ts": {
+      "upstreamSha256": "eb0120e61a4004a435c7b7c46916da9dc8b2fa8696ed0d3eb64dc953fed3ab11"
+    },
+    "frontends/messages.ts": {
+      "upstreamSha256": "9bcc7bf6e5782dfc487a98f8506f64a03834c0aa22775a82a39b7156df8dbde8"
+    },
+    "frontends/spec.ts": {
+      "upstreamSha256": "450cdfc8d0577a96818ca3697efebbbf70b530a4ba7e3eee03cf1ba8d3f1a0fd",
+      "localSha256": "28439d566c03f93a3eda17f293f1e3d7ebc34e045439d9b8f9cc2e617a568e67",
+      "adaptation": "Return loaded module names for exact local source bindings."
+    },
+    "frontends/trace.ts": {
+      "upstreamSha256": "7d083cf89b81c41556fc3fd5f07019886e0f6783c632475e7181ac4b81887367"
+    },
+    "frontends/value.ts": {
+      "upstreamSha256": "7c54be394b7a10f60591858a0f08fb1e8dc0941df1f38ede07fbe7719ff56da0"
+    },
+    "frontends/verdict.ts": {
+      "upstreamSha256": "0d0a9d6b6d6da5a7c48851b86d9d041f22982404dda6288795a1715138d7008b"
+    },
+    "frontends/view.ts": {
+      "upstreamSha256": "2c0af8939321c5aaed4b6ecac8ce6a98d0e6774d8bd15d4b02fe4f406b8c9620"
+    },
+    "ir.ts": {
+      "upstreamSha256": "5602beca4e4ac08421cfa07e4da989f0e75439f1d136cc923226909e771dc7ff",
+      "localSha256": "b401fce936553e0243056ed26105b9cad8523de50cac49d04ecebf3d935cbbf2",
+      "adaptation": "Expose resolved projection labels and loaded SANY modules as provenance metadata."
+    },
+    "janitor.ts": {
+      "upstreamSha256": "1b766035fe8ecd45a5b6e82a4e17f0d59691b9af0b8d52a812ffe8f0a42020c6"
+    },
+    "passes/annotate.ts": {
+      "upstreamSha256": "dc8eeee09c3a9a0c060f32fb1d554e01bd80e5265751cdeb041ef3e19561b92a"
+    },
+    "passes/label.ts": {
+      "upstreamSha256": "b5ef402369c5e7846be1fd39165e95cbfe715fc36eb9331a0401b26523c539c9"
+    },
+    "passes/lift.ts": {
+      "upstreamSha256": "8977dddc6c93bb2e3914d5b50760eb66876107ba51e2b8cf9e18611b4c40c89c"
+    },
+    "passes/loop-check.ts": {
+      "upstreamSha256": "07d459385849aa35834040bf34e279c39baba68244ec9da17c57703a6ee8e2d4"
+    },
+    "passes/paths.ts": {
+      "upstreamSha256": "9af1066b007ef86cb05c5e278eef09f090f1e46eb91d356e5146edbd4fee4ec7"
+    },
+    "passes/reach.ts": {
+      "upstreamSha256": "b52b38f926814937b733221b40bd31075a69a2fb91ecbce2164752a8684bc5d6"
+    },
+    "passes/region-check.ts": {
+      "upstreamSha256": "8a6e0618740a14bb7048f6563b4324958177f4685d4d6d90364cc6245b1498b4"
+    },
+    "passes/regions.ts": {
+      "upstreamSha256": "d740ebfdbb5ec7b4984412a635a596b43af7a77b8bcb49a1463c8afa75299f72"
+    },
+    "pipeline.ts": {
+      "upstreamSha256": "8aa8d9295ab6762f7f2ffae91a0aee98b1a1314747c875edba4598fdab8ed543",
+      "localSha256": "ad9075f6ff6e3474fe0970d07e36c6e08783b8ffba61d1ec719a0be235b3de06",
+      "adaptation": "Return resolved projection labels for exact native trace bindings."
+    },
+    "run.ts": {
+      "upstreamSha256": "9f406d509086d78c7690a12d16a6e0e5625ec37b0576223eb43da7d13952b880"
+    },
+    "statechart.ts": {
+      "upstreamSha256": "42e36d3deff261d01ab6a7e5e3298e27ea7d05616d94a0c468da4fb7ce2e1761"
+    },
+    "worker.ts": {
+      "upstreamSha256": "1f18ed5ef806982e05e8a40fc217e88257700b28b63cb4acbd647872f85f782b"
+    }
+  }
+}
