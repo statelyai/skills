@@ -1,0 +1,25 @@
+{
+  "name": "stately",
+  "displayName": "Stately",
+  "version": "1.2.0",
+  "description": "Model and check application behavior, review failures in Stately, and apply visual changes in the existing application stack.",
+  "author": {
+    "name": "Stately",
+    "url": "https://stately.ai"
+  },
+  "homepage": "https://stately.ai",
+  "repository": "https://github.com/statelyai/skills",
+  "keywords": [
+    "state-machines",
+    "flows",
+    "developer-tools"
+  ],
+  "channels": [
+    {
+      "server": "stately-channel",
+      "displayName": "Stately Apply"
+    }
+  ],
+  "icon": "./assets/icon.png",
+  "privacyPolicyUrl": "https://stately.ai/privacy"
+}

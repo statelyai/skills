@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Stately'
+  short_description: 'Find, check, and visualize application state machines'
+  default_prompt: "Use $stately to find implicit state machines in this application, check the most consequential one, and show the result in Stately."

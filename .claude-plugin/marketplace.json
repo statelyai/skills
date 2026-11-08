@@ -1,0 +1,19 @@
+{
+  "name": "stately",
+  "description": "Stately plugins for Claude Code.",
+  "owner": {
+    "name": "Stately",
+    "url": "https://stately.ai"
+  },
+  "plugins": [
+    {
+      "name": "stately",
+      "source": "./",
+      "description": "Hosted Stately MCP server, the Stately skill, and the opt-in Apply channel for Claude Code.",
+      "skills": [
+        "./skills/stately",
+        "./skills/xstate-v5"
+      ]
+    }
+  ]
+}
