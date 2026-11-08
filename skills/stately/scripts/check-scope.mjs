@@ -1,3 +1,5 @@
+import { readConfig } from './engine/frontends/config.ts';
+
 const record = (value) =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -25,13 +27,27 @@ export function parseCheckScope(input) {
   return input;
 }
 
+/** Every configured section, including the INVARIANT/PROPERTY rules the engine rewrites. */
+function configuredModel(result) {
+  const config = result.binding?.artifacts?.find(
+    (item) => item.role === 'config',
+  );
+  if (typeof config?.content === 'string')
+    try {
+      return readConfig({ file: config.path, text: config.content }).sections;
+    } catch {
+      // An unreadable config is diagnosed elsewhere; fall back to the checker record.
+    }
+  return result.checker.bounds.configuredSections ?? [];
+}
+
 export function completeHumanReport(text, result) {
   const checker = result.checker;
   const counts = checker.stateCounts ?? {};
   const count = (outcome) =>
     result.rules.filter((rule) => rule.outcome === outcome).length;
   const scope = checker.bounds.domain;
-  const sections = checker.bounds.configuredSections ?? [];
+  const sections = configuredModel(result);
   return [
     '# Check scope and evidence',
     '',

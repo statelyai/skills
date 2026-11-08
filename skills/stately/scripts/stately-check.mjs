@@ -25,6 +25,28 @@ const usage = `Usage:
   stately-check.mjs view RESULT_JSON [--trace ID ...] --out XGRAPH_JSON
   stately-check.mjs export MODEL_XGRAPH_JSON OPTIONS_JSON NEW_OUTPUT_DIR
 Output paths must not already exist. See references/formal-checking.md.`;
+const usageError = () => Object.assign(Error(usage), { code: 'USAGE' });
+const messages = {
+  ENOENT: (path) => `Not found: ${path}. Check the path and retry.`,
+  EEXIST: (path) =>
+    `Already exists: ${path}. Choose a new output path; existing files are preserved.`,
+  EISDIR: (path) => `Expected a file but found a directory: ${path}.`,
+  ENOTDIR: (path) => `A parent of ${path} is not a directory.`,
+  EACCES: (path) => `Permission denied: ${path}.`,
+  EPERM: (path) => `Permission denied: ${path}.`,
+};
+/** One actionable line (or the usage text) instead of a raw Node error. */
+export function describeError(error) {
+  const code =
+    error?.code ?? (error instanceof SyntaxError ? 'EJSON' : 'ERROR');
+  const message =
+    error?.syscall && error.path && messages[code]
+      ? messages[code](error.path)
+      : code === 'EJSON'
+        ? `Invalid JSON input: ${error.message}`
+        : (error?.message ?? String(error));
+  return { code, message, ...(error?.path ? { path: error.path } : {}) };
+}
 
 const isCheckCommand = (command) =>
   command === 'check' || command?.endsWith('.tla') || command?.startsWith('-');
@@ -49,7 +71,7 @@ export async function main(args) {
       allowPositionals: true,
       options: { out: { type: 'string' }, offline: { type: 'boolean' } },
     });
-    if (positionals.length !== 1) throw Error(usage);
+    if (positionals.length !== 1) throw usageError();
     const { renderChart } = await import('./render-chart.mjs');
     console.log(
       JSON.stringify(
@@ -86,7 +108,7 @@ export async function main(args) {
       !input ||
       (flags.length && (flags.length !== 2 || flags[0] !== '--workspace'))
     )
-      throw Error(usage);
+      throw usageError();
     const { currentSourceHashes } = await import('./check-evidence.mjs');
     console.log(
       JSON.stringify(
@@ -116,9 +138,9 @@ export async function main(args) {
       if (flags[i] === '--trace' && flags[i + 1]) traceIds.push(flags[++i]);
       else if (flags[i] === '--out' && flags[i + 1] && !output)
         output = flags[++i];
-      else throw Error(usage);
+      else throw usageError();
     }
-    if (!input || !output) throw Error(usage);
+    if (!input || !output) throw usageError();
     const content = await readText(input);
     const { selectCheckView } = await import('./select-view.mjs');
     await writeJson(
@@ -175,7 +197,7 @@ export async function main(args) {
     await writeJson(join(output, 'manifest.json'), result.manifest);
     return;
   }
-  throw Error(usage);
+  throw usageError();
 }
 if (process.env.STATELY_LAUNCHER_DEBUG === '1')
   console.error(
@@ -195,7 +217,13 @@ if (isMain) {
     const run = await main(process.argv.slice(2));
     if (run?.exit !== undefined) process.exitCode = run.exit;
   } catch (error) {
-    console.error(error.message);
+    const described = describeError(error);
+    const flags = process.argv.slice(2);
+    const end = flags.indexOf('--');
+    const json = (end < 0 ? flags : flags.slice(0, end)).includes('--json');
+    if (json)
+      console.log(JSON.stringify({ ok: false, error: described }, null, 2));
+    else console.error(described.message);
     process.exitCode = isCheckCommand(process.argv[2]) ? 2 : 1;
   }
 }

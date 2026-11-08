@@ -14,7 +14,7 @@ import { sha256, entityId } from './check-result.mjs';
 import { completeHumanReport } from './check-scope.mjs';
 import { shareableDiagnostic } from './diagnostics.mjs';
 import { attachReport, checkReport, projectedView } from './checked-view.mjs';
-import { ensureToolchain } from './toolchain.mjs';
+import { ensureToolchain, PROGRESS_PREFIX } from './toolchain.mjs';
 
 await new Promise((resolve) => {
   process.stdin.once('data', resolve);
@@ -35,6 +35,7 @@ try {
   const toolchain = await ensureToolchain({
     offline: request.offline,
     installDirectory: request.bootstrapDirectory,
+    progress: (line) => process.stderr.write(`${PROGRESS_PREFIX}${line}\n`),
   });
   await json('toolchain.json', toolchain);
   const engine = JSON.parse(
@@ -96,7 +97,7 @@ try {
         : 'bounded-configurations',
       moduleSnapshot: modules?.length
         ? 'SANY loaded local module closure'
-        : 'conservative local TLA snapshot',
+        : 'local EXTENDS/INSTANCE closure snapshot',
       tlcSha256: toolchain.sha256,
       javaVersion: toolchain.javaVersion,
       javaOptionsConfigured: [

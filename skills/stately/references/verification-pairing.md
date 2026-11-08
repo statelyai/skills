@@ -34,7 +34,8 @@ keep that verifier and its proof obligations authoritative. A Stately behavioral
 model can explain the scope; it does not replace a different backend's proof.
 
 The bundled TLC checking/projection engine is adapted from Lauren Tan's
-MIT-licensed pstack implementation at a pinned commit. Attribution and local
+MIT-licensed pstack implementation at a pinned commit; see
+[Credits](compatibility.md#credits). Attribution and local
 adaptations ship in `scripts/engine/NOTICE.md` and `LICENSE.md`. Stately owns the
 runner, toolchain bootstrap, native report/projection, editor workflow, and
 regression coverage. The upstream plugin is not a runtime dependency.

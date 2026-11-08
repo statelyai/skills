@@ -32,12 +32,18 @@ export const TLC_SHA256 =
 export const PELE_VERSION = '1.9.0';
 export const PELE_SHA256 =
   '7c40a25eeaf4370fb56c03d9d8f6780051c9c39b6c6ca36d53239075117097f5';
+/** Worker stderr lines with this prefix are forwarded to the user as progress. */
+export const PROGRESS_PREFIX = 'stately-progress: ';
 export const toolchainCache = () =>
   resolve(
     process.env.STATELY_CACHE_DIR ??
       join(homedir(), '.cache', 'stately', 'check'),
   );
 const tlcURL = `https://github.com/tlaplus/tlaplus/releases/download/v${TLC_VERSION}/tla2tools.jar`;
+const megabytes = (bytes) =>
+  Number.isFinite(bytes) && bytes > 0
+    ? ` (${Math.max(1, Math.round(bytes / 1_000_000))} MB)`
+    : '';
 const exists = (file) =>
   access(file).then(
     () => true,
@@ -126,7 +132,7 @@ async function findJava(directory) {
     }
   }
 }
-async function installJava(cache, signal, installDirectory) {
+async function installJava(cache, signal, installDirectory, progress) {
   const os = { darwin: 'mac', linux: 'linux', win32: 'windows' }[
     process.platform
   ];
@@ -159,6 +165,9 @@ async function installJava(cache, signal, installDirectory) {
     if (java && (await javaVersion(java, signal))) return java;
     throw Error(`Cached Java installation is incomplete: ${destination}`);
   }
+  progress(
+    `Downloading Temurin JRE 25${megabytes(asset.size)} into ${cache} ...`,
+  );
   const stage = installDirectory ?? join(cache, `java-stage-${randomUUID()}`);
   await mkdir(stage);
   const archive = join(
@@ -169,6 +178,7 @@ async function installJava(cache, signal, installDirectory) {
   await mkdir(contents);
   try {
     await download(asset.link, archive, asset.checksum, 200_000_000, signal);
+    progress('Unpacking Temurin JRE 25 ...');
     if (process.platform === 'win32') {
       await exec(
         'powershell',
@@ -217,6 +227,7 @@ export async function ensureRenderer({
   offline = false,
   signal,
   cache = toolchainCache(),
+  progress = () => {},
 } = {}) {
   cache = resolve(cache);
   await mkdir(cache, { recursive: true });
@@ -226,6 +237,7 @@ export async function ensureRenderer({
       throw Error(
         'Pele renderer is not cached; render once without --offline.',
       );
+    progress(`Downloading Pele renderer ${PELE_VERSION} ...`);
     const stage = `${file}.${randomUUID()}.tmp`;
     try {
       await download(
@@ -244,6 +256,7 @@ export async function ensureRenderer({
     } finally {
       await rm(stage, { force: true });
     }
+    progress('Ready');
   }
   if ((await digest(file)) !== PELE_SHA256)
     throw Error(
@@ -258,7 +271,9 @@ export async function ensureToolchain({
   signal,
   cache = toolchainCache(),
   installDirectory,
+  progress = () => {},
 } = {}) {
+  let downloaded = false;
   cache = resolve(cache);
   await mkdir(cache, { recursive: true });
   const configuredJava = process.env.STATELY_TLC_JAVA ?? process.env.JAVA;
@@ -281,7 +296,8 @@ export async function ensureToolchain({
       throw Error(
         'A usable Java 11+ binary was not found; set JAVA or permit automatic Java provisioning.',
       );
-    java = await installJava(cache, signal, installDirectory);
+    java = await installJava(cache, signal, installDirectory, progress);
+    downloaded = true;
     version = await javaVersion(java, signal);
   }
   const configuredJar = process.env.STATELY_TLC_JAR ?? process.env.TLA2TOOLS;
@@ -293,6 +309,8 @@ export async function ensureToolchain({
       throw Error(
         `TLC jar not found: ${jar}. Set TLA2TOOLS or run without --offline.`,
       );
+    progress(`Downloading TLC ${TLC_VERSION} (2 MB) ...`);
+    downloaded = true;
     const stage = `${jar}.${randomUUID()}.tmp`;
     await download(tlcURL, stage, TLC_SHA256, 20_000_000, signal);
     try {
@@ -323,5 +341,6 @@ export async function ensureToolchain({
     /TLC2 Version[^\n]*/,
   )?.[0];
   if (!tlcVersion) throw Error('Cannot identify the configured TLC checker.');
+  if (downloaded) progress('Ready');
   return { java, jar, javaVersion: version, version: tlcVersion, sha256 };
 }

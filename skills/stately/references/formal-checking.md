@@ -29,6 +29,10 @@ is used when available or configured by `JAVA`; otherwise an official Temurin
 its pinned SHA-256. Downloads use HTTPS and checksum validation. `TLA2TOOLS`
 selects another jar; record its actual version/digest and validate compatibility.
 `STATELY_TLC_JAVA`/`STATELY_TLC_JAR` are equivalent explicit overrides.
+A cold cache prints progress to stderr, for example
+`Downloading Temurin JRE 25 (56 MB) into CACHE ...` (the size varies by
+platform), `Downloading TLC 1.7.4 (2 MB) ...`, and `Ready`; `render` prints the same for Pele. A warm cache prints nothing, and
+stdout stays the report or `--json` object either way.
 
 `--offline` permits only installed/cached tools. `STATELY_CACHE_DIR` selects the
 cache. A default 300-second checking limit prevents an unbounded initial run;
@@ -49,11 +53,20 @@ processes are terminated together; parent death also triggers cleanup.
 - `graph.json`: native Stately view carrying the report, when it fits the editor.
 
 Exit codes: 0 no broken rules in the original configured check; 1 a broken rule;
-2 failure; 124 timeout; 130/143 interruption. Always inspect every rule and run
+2 failure; 124 timeout; 130/143 interruption. A missing input or a non-empty
+`--out` stops before any output is created, with one line on stderr naming the
+path. With `--json`, such errors print `{"ok": false, "error": {"code", "message", "path"}}`
+to stdout instead (`path` only when one applies). Other subcommands exit 1 with
+a one-line message. Always inspect every rule and run
 status: a later error/budget can leave some rules not checked. Error reports are
 retained rather than described as successful checks.
 
-Checking freezes local `.tla` modules and the selected config in `inputs/`. SANY identifies the loaded module closure; only used local modules are bound in the completed result. Unused neighbors do not gate freshness. The selected view executes once in its original module context;
+Checking copies the specification, the local `.tla` modules it reaches through
+`EXTENDS` and `INSTANCE` (transitively, ignoring comments and strings), and the
+selected config into `inputs/` as `Run.cfg`. Standard modules such as `Naturals`
+have no local file and come from TLC. SANY then reports the modules it actually
+loaded; only those are bound in the completed result. Unused neighbors are
+neither copied nor gate freshness. The selected view executes once in its original module context;
 observed view-file changes invalidate publication. Imported JS dependencies,
 external effects, and model/application refinement remain explicit assumptions.
 
@@ -185,12 +198,16 @@ successful host delivery or application replay.
 
 ## Import an existing result
 
-Use `stately-check.mjs` with original sources, checker provenance, and a new
-output filename:
+This imports a TLC JSON trace (`-dumpTrace json`) or DiskGraph DOT dump
+(`-dump dot`). Plain TLC text output such as `tlc.out` is not parsed, and no
+command reads an installed pstack plugin; for a pstack Mermaid chart, see
+[render.md](render.md) and [statechart-handoff.md](statechart-handoff.md).
+Run the launcher with original sources, checker provenance, and a new output
+filename:
 
 ```sh
-node SKILL_DIR/scripts/stately-check.mjs import-trace trace.json Checkout.tla Checkout.cfg provenance.json check-result.json
-node SKILL_DIR/scripts/stately-check.mjs graph check-result.json checked.xgraph.json
+sh SKILL_DIR/scripts/stately-check import-trace trace.json Checkout.tla Checkout.cfg provenance.json check-result.json
+sh SKILL_DIR/scripts/stately-check graph check-result.json checked.xgraph.json
 ```
 
 `import-dot` takes the same arguments, with a TLC DOT dump as its first input.
@@ -258,7 +275,7 @@ truncation) in an options file:
 ```
 
 ```sh
-node SKILL_DIR/scripts/stately-check.mjs export authored.xgraph.json options.json new-check
+sh SKILL_DIR/scripts/stately-check export authored.xgraph.json options.json new-check
 cd new-check
 java -jar /path/to/tla2tools.jar -workers 1 -dump dot,actionlabels explored.dot StatelyCheckout.tla
 ```

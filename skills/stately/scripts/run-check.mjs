@@ -16,7 +16,7 @@ import { tmpdir, constants } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { randomUUID } from 'node:crypto';
-import { toolchainCache } from './toolchain.mjs';
+import { toolchainCache, PROGRESS_PREFIX } from './toolchain.mjs';
 import { artifact, parseCheckResult, sha256 } from './check-result.mjs';
 import { attachReport, checkReport, projectedView } from './checked-view.mjs';
 import { shareableDiagnostic } from './diagnostics.mjs';
@@ -48,11 +48,93 @@ async function emptyOutput(output) {
   }
   const target = info.isSymbolicLink() ? await realpath(output) : output;
   if (!(await lstat(target)).isDirectory() || (await readdir(target)).length)
-    throw Error(
-      '--out must be a new or empty directory; existing artifacts are preserved.',
+    throw Object.assign(
+      Error(
+        `--out ${output} already exists and is not an empty directory. Choose a new --out; existing artifacts are preserved.`,
+      ),
+      { code: 'EEXIST', path: output },
     );
   return target;
 }
+async function requireFile(path, what, hint = '') {
+  let info;
+  try {
+    info = await stat(path);
+  } catch (error) {
+    if (!absent(error)) throw error;
+    throw Object.assign(Error(`${what} not found: ${path}.${hint}`), {
+      code: 'ENOENT',
+      path,
+    });
+  }
+  if (!info.isFile())
+    throw Object.assign(Error(`${what} is not a regular file: ${path}.`), {
+      code: 'EISDIR',
+      path,
+    });
+}
+/** Module names a TLA+ source imports through EXTENDS or INSTANCE, ignoring comments and strings. */
+export function importedModules(source) {
+  let code = '';
+  let depth = 0;
+  for (let i = 0; i < source.length; i++) {
+    const pair = source.slice(i, i + 2);
+    if (depth) {
+      if (pair === '(*' || pair === '*)') {
+        depth += pair === '(*' ? 1 : -1;
+        i++;
+        // A comment separates tokens: EXTENDS(* note *)Helper names Helper.
+        if (!depth) code += ' ';
+      }
+    } else if (source[i] === '"') {
+      for (i++; i < source.length && source[i] !== '"'; i++)
+        if (source[i] === '\\') i++;
+      code += ' ';
+    } else if (pair === '(*') {
+      depth = 1;
+      i++;
+    } else if (pair === '\\*') {
+      while (i < source.length && source[i] !== '\n') i++;
+      code += '\n';
+    } else code += source[i];
+  }
+  const names = new Set();
+  for (const [, list] of code.matchAll(/\bEXTENDS\b\s+(\w+(?:\s*,\s*\w+)*)/g))
+    for (const name of list.split(',')) names.add(name.trim());
+  for (const [, name] of code.matchAll(/\bINSTANCE\s+(\w+)/g)) names.add(name);
+  return names;
+}
+
+/** Local .tla files reachable from the specification; standard modules have no local file. */
+async function localModuleClosure(directory, spec) {
+  const local = new Map();
+  for (const entry of await readdir(directory, { withFileTypes: true }))
+    if (
+      (entry.isFile() || entry.isSymbolicLink()) &&
+      entry.name.endsWith('.tla')
+    )
+      local.set(entry.name.slice(0, -4), entry.name);
+  const found = new Map(),
+    queue = [basename(spec)];
+  while (queue.length) {
+    const name = queue.shift();
+    if (found.has(name)) continue;
+    const file = join(directory, name);
+    if (!(await stat(file)).isFile())
+      throw Error(`TLA input is not a regular file: ${name}`);
+    const content = await text(file);
+    found.set(name, { file, content });
+    for (const module of importedModules(content)) {
+      // Case-insensitive file systems can resolve a differently cased name; copying extra is safe.
+      const matches = [...local].filter(
+        ([key]) => key === module || key.toLowerCase() === module.toLowerCase(),
+      );
+      for (const [, entry] of matches) queue.push(entry);
+    }
+  }
+  return found;
+}
+
 function configuredRules(config, module, strict = false) {
   try {
     const checks = readChecks({
@@ -215,6 +297,18 @@ export async function runCheck({
     );
   const originalView = inputView ? resolve(inputView) : undefined;
   const originalScope = inputScope ? resolve(inputScope) : undefined;
+  // Validate every input before creating output, staging, or helper processes.
+  await requireFile(originalSpec, 'Specification');
+  await requireFile(
+    originalConfig,
+    'Checker configuration',
+    inputConfig
+      ? ''
+      : ' Pass --config FILE; the default is the .cfg beside the .tla.',
+  );
+  if (originalView) await requireFile(originalView, 'View');
+  if (originalScope) await requireFile(originalScope, 'Scope');
+  for (const file of sources) await requireFile(resolve(file), 'Source');
   const output = await emptyOutput(
     resolve(out ?? inputSpec.replace(/\.tla$/, '-chart')),
   );
@@ -318,28 +412,14 @@ export async function runCheck({
       janitor.once('error', reject);
     });
     await mkdir(join(stage, 'inputs'));
-    // Freeze local TLA modules and selected config; checking never mutates originals.
-    for (const entry of await readdir(dirname(originalSpec), {
-      withFileTypes: true,
-    }))
-      if (
-        (entry.isFile() || entry.isSymbolicLink()) &&
-        entry.name.endsWith('.tla')
-      ) {
-        const sourceFile = join(dirname(originalSpec), entry.name);
-        if (!(await stat(sourceFile)).isFile())
-          throw Error(`TLA input is not a regular file: ${entry.name}`);
-        const content = await text(sourceFile);
-        const path = `inputs/${entry.name}`;
-        bindInput('spec', path, sourceFile, content);
-        await writeFile(join(stage, path), content, { flag: 'wx' });
-      }
-    if (
-      !request.artifacts.some(
-        (item) => item.path === `inputs/${basename(originalSpec)}`,
-      )
-    )
-      throw Error('Specification must be an existing regular .tla file.');
+    // Freeze the spec's local EXTENDS/INSTANCE closure and selected config; checking never mutates originals.
+    for (const [name, { file, content }] of await localModuleClosure(
+      dirname(originalSpec),
+      originalSpec,
+    )) {
+      bindInput('spec', `inputs/${name}`, file, content);
+      await writeFile(join(stage, 'inputs', name), content, { flag: 'wx' });
+    }
     request.configText = await text(originalConfig);
     bindInput('config', 'inputs/Run.cfg', originalConfig, request.configText);
     await writeFile(request.config, request.configText, { flag: 'wx' });
@@ -396,9 +476,20 @@ export async function runCheck({
         },
       );
       worker.stdin.on('error', () => {});
-      let stderr = '';
+      let stderr = '',
+        pending = '';
+      worker.stderr.setEncoding('utf8');
       worker.stderr.on('data', (chunk) => {
-        stderr = (stderr + chunk).slice(-16000);
+        // Forward toolchain progress so a cold download is visibly not hung.
+        const lines = (pending + chunk).split('\n');
+        pending = lines.pop();
+        for (const line of lines)
+          if (line.startsWith(PROGRESS_PREFIX))
+            console.error(line.slice(PROGRESS_PREFIX.length));
+          else stderr = (stderr + line + '\n').slice(-16000);
+      });
+      worker.stderr.on('end', () => {
+        if (pending) stderr = (stderr + pending).slice(-16000);
       });
       const exited = new Promise((settle) => {
         worker.on('error', (error) =>

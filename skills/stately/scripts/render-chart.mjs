@@ -10,7 +10,10 @@ export async function renderChart({ input, out, offline = false }) {
     throw Error('Mermaid source exceeds the rendering limit.');
   const bytes = await readFile(sourcePath);
   const source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  const renderer = await ensureRenderer({ offline });
+  const renderer = await ensureRenderer({
+    offline,
+    progress: (line) => console.error(line),
+  });
   const { render } = await import(pathToFileURL(renderer.file).href);
   const { svg } = render(source, {
     limit: 1_000_000,

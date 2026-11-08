@@ -68,7 +68,6 @@ Add this to the app repository's AGENTS.md or CLAUDE.md, naming the linked proje
 
 This is an instruction for future coding tasks. It installs no background watcher.
 
-
 ## Managed GitHub App updates
 
 For automatic merge-triggered drafts, use the hosted project's **Automatic updates
