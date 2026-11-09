@@ -7,6 +7,7 @@ Stately Skills are Claude skills for keeping your code, docs, and diagrams in sy
 <!-- list of skills in skills/ directory, linking to each SKILL.md with its frontmatter description -->
 
 - **[readme](skills/readme/SKILL.md)** - Keep README files in sync with the codebase using symbolic HTML comments.
+- **[state-management](skills/state-management/SKILL.md)** - Model, review, and refactor application state so source state stays minimal, derived state is computed, impossible states are not representable, and each piece of state lives in the right place.
 - **[stately](skills/stately/SKILL.md)** - Find implicit state machines in application code, model and check their behavior, and inspect or improve them in Stately. Use for /stately, hidden-state discovery, statechart or protocol analysis, safety/liveness/deadlock checks, app documentation, and visual behavior proposals in any framework.
 - **[xstate-v5](skills/xstate-v5/SKILL.md)** - Design, implement, review, and migrate XState v5 statecharts in TypeScript using modern v5 patterns.
 
