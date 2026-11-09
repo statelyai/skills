@@ -130,17 +130,30 @@ export async function killOwnedGroup(pid, temporary, stage, liveChild) {
     if (process.platform === 'win32') {
       const code =
         'Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -and -not $_.CommandLine.Contains("check-janitor.mjs") -and ($_.CommandLine.Contains($env:STATELY_OWNED_TEMP) -or ($env:STATELY_OWNED_STAGE -and $_.CommandLine.Contains($env:STATELY_OWNED_STAGE))) } | Select-Object -ExpandProperty ProcessId';
-      const output = await exec(
-        'powershell',
-        ['-NoProfile', '-NonInteractive', '-Command', code],
-        {
-          env: {
-            ...process.env,
-            STATELY_OWNED_TEMP: temporary,
-            STATELY_OWNED_STAGE: stage ?? '',
-          },
-        },
-      );
+      // Get-CimInstance can exceed its timeout on a loaded Windows host; a
+      // timed-out listing proves nothing, so retry before reporting a warning.
+      let output;
+      for (let attempt = 1; ; attempt++) {
+        try {
+          output = await exec(
+            'powershell',
+            ['-NoProfile', '-NonInteractive', '-Command', code],
+            {
+              timeout: 30000,
+              env: {
+                ...process.env,
+                STATELY_OWNED_TEMP: temporary,
+                STATELY_OWNED_STAGE: stage ?? '',
+              },
+            },
+          );
+          break;
+        } catch (error) {
+          const timedOut = error.killed === true && error.signal === 'SIGTERM';
+          if (!timedOut || attempt >= 3) throw error;
+          await delay(500 * attempt);
+        }
+      }
       const ids = output
         .trim()
         .split(/\s+/)
