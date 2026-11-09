@@ -9,6 +9,7 @@
   },
   "homepage": "https://stately.ai",
   "repository": "https://github.com/statelyai/skills",
+  "license": "MIT",
   "keywords": [
     "state-machines",
     "flows",

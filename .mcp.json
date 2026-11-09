@@ -6,7 +6,7 @@
     },
     "stately-channel": {
       "command": "npx",
-      "args": ["-y", "@statelyai/mcp@latest", "channel"]
+      "args": ["-y", "@statelyai/mcp@0.26.1", "channel"]
     }
   }
 }
