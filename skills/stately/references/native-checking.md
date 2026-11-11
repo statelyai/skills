@@ -163,10 +163,14 @@ The output directory must be new or empty. It contains the same files as the
 TLA+ path:
 
 - `compact-report.md` and `report.md`: readable reports.
+  The native report lists explored states, transitions, the state budget, and
+  the rules-file fairness assumption. It does not use TLA+ limits.
 - `check-result.json` (`stately.check-result.v1`) and `check-report.json`
   (`stately.check-report.v1`).
 - `graph.json`: the native model with the check report attached. Pass it to
   `save_stately_check_result`.
+  The saved check lists bound artifact paths and SHA-256 hashes. These bindings
+  are separate from per-state source citations on an estimated application flow.
 - The report's `recheck` block carries `modelPath` and `rulesPath` for native
   runs, alongside the TLA-named `specPath` and `configPath`.
 - `run.json` and `inputs/`: run metadata and copies of the inputs.
