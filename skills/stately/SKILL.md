@@ -172,6 +172,13 @@ machine or bug. Never claim to have found all machines without a stated search
 scope and coverage record. If source is unavailable, ask for it or label the
 result an estimate from the description.
 
+Inventory the source areas first, then sweep each one; the candidate count
+follows from the code, so do not stop at a handful in a large repository.
+Report every candidate in the ranked table; diagram or link capacity never
+removes a row. Visualize in rank order with complete models, say how many
+were visualized, and when areas remain unswept, lead with partial coverage
+and name them.
+
 To check a finding, pick one bounded, consequential candidate, specify intended
 rules independently of the code, and run [Check invariants](#check-invariants).
 For visual review, save source-linked candidates as estimated models with
