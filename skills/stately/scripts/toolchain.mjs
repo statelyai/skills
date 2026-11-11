@@ -265,6 +265,73 @@ export async function ensureRenderer({
   return { file, version: PELE_VERSION, sha256: PELE_SHA256 };
 }
 
+export const XSTATE_VERSION = '6.0.0-alpha.65';
+/** The ESM entry and the chunks it imports, from the published package. */
+export const XSTATE_FILES = {
+  'xstate.esm.js':
+    '7ece27cc5e9465d5d070c1394dc4eef4dfebb6be03b6dead4286003d956f58f6',
+  'index-52ad3d45.esm.js':
+    '448f9d5df0eff4a9c0c3b3f8b31b54ddf49b36f12ee0ccab4f230b955d79f21c',
+  'createActor-4629a290.esm.js':
+    '49e5c95884c91c467b028393b9569fd09bf5ee4132e228acd6197fb218951f2c',
+  'schema.types-0ecd17b8.esm.js':
+    '0367ede5890c4cbdd62fd5c6faac12095328ed252e587c485d2d45ba3ee55f54',
+  'effectDescriptor-973fc1ba.esm.js':
+    '6b4b0e9546f7cabfab977828602411866d3b54f71abf67b985ad6353ee6dec73',
+};
+
+/**
+ * XState v6 for the native checker: a checksum-verified copy of the published ESM
+ * build in the Stately cache, no package manager or workspace install required.
+ * Returns the cached entry file to `import()`.
+ */
+export async function ensureXState({
+  offline = false,
+  signal,
+  cache = toolchainCache(),
+  progress = () => {},
+} = {}) {
+  cache = resolve(cache);
+  const directory = join(cache, `xstate-${XSTATE_VERSION}`);
+  await mkdir(directory, { recursive: true });
+  let announced = false;
+  for (const [name, sha256] of Object.entries(XSTATE_FILES)) {
+    const file = join(directory, name);
+    if ((await exists(file)) && (await digest(file)) === sha256) continue;
+    if (offline)
+      throw Error(
+        `XState ${XSTATE_VERSION} is not cached; run once without --offline.`,
+      );
+    if (!announced) progress(`Downloading XState ${XSTATE_VERSION} ...`);
+    announced = true;
+    await rm(file, { force: true });
+    const stage = `${file}.${randomUUID()}.tmp`;
+    try {
+      await download(
+        `https://cdn.jsdelivr.net/npm/xstate@${XSTATE_VERSION}/dist/${name}`,
+        stage,
+        sha256,
+        2_000_000,
+        signal,
+      );
+      try {
+        await rename(stage, file);
+      } catch (error) {
+        if (!(await exists(file)) || (await digest(file)) !== sha256)
+          throw error;
+      }
+    } finally {
+      await rm(stage, { force: true });
+    }
+  }
+  if (announced) progress('Ready');
+  return {
+    file: join(directory, 'xstate.esm.js'),
+    version: XSTATE_VERSION,
+    files: XSTATE_FILES,
+  };
+}
+
 /** Local, checksum-verified toolchain; no pstack or mise installation required. */
 export async function ensureToolchain({
   offline = false,

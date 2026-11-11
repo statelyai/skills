@@ -23,7 +23,14 @@ const steady = (text: string) =>
     .replace(/\[pid: \d+\]/g, "[pid: _]")
     .replace(/\d{4}-\d\d-\d\d \d\d:\d\d:\d\d/g, "_")
     .replace(/ \([\d,]+ d?s\/min\)/g, "")
-    .replace(/ in (?:\d+d \d\dh|\d\dh \d\dmin|\d\dmin \d\ds|\d\ds) at /g, " in _ at ");
+    .replace(/ in (?:-?\d+ms|\d+d \d\dh|\d\dh \d\dmin|\d\dmin \d\ds|\d\ds) at /g, " in _ at ");
+
+test("elapsed-time normalization handles clock correction without hiding invariant output", () => {
+  const negative = "Error: Invariant NotOdd is violated.\nFinished in -534ms at (2026-11-11 04:54:37)\n";
+  const expected = "Error: Invariant NotOdd is violated.\nFinished in _ at (_)\n";
+  assert.equal(steady(negative), expected);
+  assert.notEqual(steady(negative.replace("NotOdd", "DifferentInvariant")), expected);
+});
 
 test(
   "each corpus spec's TLC output reads as plain TLC prints it at -workers 1",

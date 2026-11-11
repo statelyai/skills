@@ -62,7 +62,8 @@ evidence storage; cite them without claiming they were attached by a save.
 ## Formal-check runs
 
 Use `save_stately_check_result({name,graph,context})` for the owned runner's
-`graph.json`. Its report lives in `graph.data.meta['@statelyai.checkReport']`.
+`graph.json`. A native run's `graph.json` is the saved model with the report
+attached; `machineId` plus `revision` replace the run on that model. Its report lives in `graph.data.meta['@statelyai.checkReport']`.
 `get_stately_check_result({machineId,currentArtifacts?})` returns the actual
 report, view/source freshness, model revision, project and editor link. Hash
 entries are `{path,sha256}`; an explicitly missing file uses `sha256:null`.
