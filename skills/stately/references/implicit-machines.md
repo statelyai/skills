@@ -12,8 +12,10 @@ outcome depends on a persistent phase or combination of values.
    generated/vendor code. Read existing tests and user-facing contracts. Search
    for status enums, related booleans, reducers, event handlers, promises,
    timers, retries, subscriptions, cancellation, persistence, and handoffs
-   between UI, API, worker, or database. Follow writes and reads across files;
-   keyword matches alone are insufficient.
+   between UI, API, worker, or database. Follow writes and reads across files
+   and into owning dependency source when it decides a transition. If that
+   public source is not local, fetch it into task-owned scratch space. Record
+   its revision. Keyword matches alone are insufficient.
 2. For each candidate, record the state-bearing values and owners; the initial
    condition; events and external outcomes; guards; effects; terminal and
    recovery paths. Trace at least one normal path and one failure/cancellation
@@ -27,8 +29,11 @@ outcome depends on a persistent phase or combination of values.
    disagrees with backend state. Frame each as a question or candidate rule
    until checked against intended behavior and replayed in code.
 4. Rank by consequence, likelihood of a reachable conflict, and strength of
-   evidence. Report the search boundary and remaining gaps; never imply
-   exhaustive coverage from a partial scan.
+   evidence. Trace the top candidate through its owning code and related tests
+   before stopping. If the user asks for bugs or verification, run one bounded
+   check and attempt to replay an actionable failure. Report the search
+   boundary and remaining gaps; never imply exhaustive coverage from a partial
+   scan.
 
 ## Hand off one candidate
 
