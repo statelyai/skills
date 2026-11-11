@@ -282,6 +282,7 @@ export async function runCheck({
   config: inputConfig,
   view: inputView,
   scope: inputScope,
+  manifest: inputManifest,
   out,
   offline = false,
   timeout = 300,
@@ -297,6 +298,7 @@ export async function runCheck({
     );
   const originalView = inputView ? resolve(inputView) : undefined;
   const originalScope = inputScope ? resolve(inputScope) : undefined;
+  const originalManifest = inputManifest ? resolve(inputManifest) : undefined;
   // Validate every input before creating output, staging, or helper processes.
   await requireFile(originalSpec, 'Specification');
   await requireFile(
@@ -308,6 +310,13 @@ export async function runCheck({
   );
   if (originalView) await requireFile(originalView, 'View');
   if (originalScope) await requireFile(originalScope, 'Scope');
+  let manifest;
+  if (originalManifest) {
+    await requireFile(originalManifest, 'Export manifest');
+    manifest = JSON.parse(await text(originalManifest));
+    if (!Array.isArray(manifest?.rules))
+      throw Error('--manifest must be the manifest.json written by `stately-check export`.');
+  }
   for (const file of sources) await requireFile(resolve(file), 'Source');
   const output = await emptyOutput(
     resolve(out ?? inputSpec.replace(/\.tla$/, '-chart')),
@@ -527,6 +536,16 @@ export async function runCheck({
         );
       }
       run = JSON.parse(await text(join(stage, 'run.json')));
+      if (manifest) {
+        // Report TLC verdicts under the rule ids of the exported rules file.
+        const { mapTlcRules } = await import('./native-tla.mjs');
+        run.nativeRules = mapTlcRules(
+          manifest,
+          JSON.parse(await text(join(stage, 'check-result.json'))),
+        );
+        await json(join(stage, 'native-rules.json'), run.nativeRules);
+        await json(join(stage, 'run.json'), run);
+      }
       // Projection code executes once from its original module context; reject observed changes.
       if (
         originalView &&
@@ -654,6 +673,7 @@ export function parseCheckArgs(args) {
       out: { type: 'string' },
       timeout: { type: 'string' },
       scope: { type: 'string' },
+      manifest: { type: 'string' },
       source: { type: 'string', multiple: true },
       offline: { type: 'boolean' },
       json: { type: 'boolean' },

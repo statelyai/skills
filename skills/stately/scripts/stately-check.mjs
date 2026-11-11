@@ -6,7 +6,7 @@ import { realpathSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { artifact, parseCheckResult, resultToXGraph } from './check-result.mjs';
 import { importTlcTrace, importTlcDot } from './tlc-import.mjs';
-import { exportNativeTla } from './native-tla.mjs';
+import { exportNativeTla, moduleName } from './native-tla.mjs';
 
 const readText = async (path) =>
   new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
@@ -15,7 +15,7 @@ const readText = async (path) =>
 const writeJson = (path, value) =>
   writeFile(path, `${JSON.stringify(value, null, 2)}\n`, { flag: 'wx' });
 const usage = `Usage:
-  stately-check.mjs check SPEC.tla [--config FILE] [--view FILE] [--out DIR] [--source FILE] [--scope FILE] [--timeout SECONDS] [--offline] [--share-documents] [--compact] [--json]
+  stately-check.mjs check SPEC.tla [--config FILE] [--view FILE] [--out DIR] [--source FILE] [--scope FILE] [--manifest FILE] [--timeout SECONDS] [--offline] [--share-documents] [--compact] [--json]
   stately-check.mjs render CHART.mmd [--out FILE.svg] [--offline]
   stately-check.mjs import-trace TRACE SPEC CONFIG PROVENANCE_JSON RESULT_JSON
   stately-check.mjs import-dot DOT SPEC CONFIG PROVENANCE_JSON RESULT_JSON
@@ -23,7 +23,7 @@ const usage = `Usage:
   stately-check.mjs freshness RESULT_JSON [--workspace DIRECTORY]
   stately-check.mjs record-app-checks GRAPH_JSON CHECKS_JSON NEW_GRAPH_JSON
   stately-check.mjs view RESULT_JSON [--trace ID ...] --out XGRAPH_JSON
-  stately-check.mjs export MODEL_XGRAPH_JSON OPTIONS_JSON NEW_OUTPUT_DIR
+  stately-check.mjs export MODEL_JSON RULES_JSON NEW_OUTPUT_DIR [--module NAME]
 Output paths must not already exist. See references/formal-checking.md.`;
 const usageError = () => Object.assign(Error(usage), { code: 'USAGE' });
 const messages = {
@@ -172,21 +172,20 @@ export async function main(args) {
     );
     return;
   }
-  if (command === 'export' && paths.length === 3) {
-    const [modelPath, optionsPath, output] = paths;
-    const content = await readText(modelPath);
-    const options = JSON.parse(await readText(optionsPath));
-    if (
-      Object.keys(options).some(
-        (key) => !['module', 'bounds', 'invariants'].includes(key),
-      )
-    )
-      throw Error('Unknown exporter option.');
-    const module = options.module ?? 'StatelyModel';
+  if (command === 'export') {
+    const { values, positionals } = parseArgs({
+      args: paths,
+      allowPositionals: true,
+      options: { module: { type: 'string' } },
+    });
+    if (positionals.length !== 3) throw usageError();
+    const [modelPath, rulesPath, output] = positionals;
+    const module =
+      values.module ??
+      moduleName(basename(modelPath).replace(/\.json$/, ''));
     const result = exportNativeTla({
-      content,
-      path: basename(modelPath),
-      ...options,
+      model: JSON.parse(await readText(modelPath)),
+      rules: JSON.parse(await readText(rulesPath)),
       module,
     });
     await mkdir(output);
@@ -195,6 +194,9 @@ export async function main(args) {
       flag: 'wx',
     });
     await writeJson(join(output, 'manifest.json'), result.manifest);
+    console.log(
+      JSON.stringify({ module, out: output, rules: result.manifest.rules.length }),
+    );
     return;
   }
   throw usageError();

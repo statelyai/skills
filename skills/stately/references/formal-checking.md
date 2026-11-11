@@ -253,58 +253,61 @@ Use the native save tool with the resulting XGraph. Read import notes; retain
 the original report, check result JSON, and IDs. Check exact-byte freshness
 before presenting historical evidence as current; see [the result contract](check-result.md).
 
-## Export a narrowly supported native model
+## Export a native model
 
-Export only a single flat machine with deterministic external-event transitions,
-one initial child, and optional final children without outgoing edges. Native
-v5/v6 correspondence is tested for this subset. Supported invariants forbid
-explicit leaf state IDs. Supply finite limits (graph size limits, not search
-truncation) in an options file:
-
-```json
-{
-  "module": "StatelyCheckout",
-  "bounds": { "maxStates": 50, "maxTransitions": 200 },
-  "invariants": [
-    {
-      "name": "CancelledNeverCharged",
-      "forbiddenStateIds": ["chargedAfterCancellation"]
-    }
-  ]
-}
-```
+`stately-check export` turns the native checker's two inputs (a model in XGraph or
+XState config form and a rules file) into a TLA+ module and a TLC configuration, so
+TLC can check the same model and the same rules. The native checker stays the
+default; use the export when a TLC run is wanted as independent evidence or for
+a check the native engine does not provide.
 
 ```sh
-sh SKILL_DIR/scripts/stately-check export authored.xgraph.json options.json new-check
-cd new-check
-java -jar /path/to/tla2tools.jar -workers 1 -dump dot,actionlabels explored.dot StatelyCheckout.tla
+sh SKILL_DIR/scripts/stately-check export model.json rules.json new-export --module Checkout
+sh SKILL_DIR/scripts/stately-check check new-export/Checkout.tla --config new-export/Checkout.cfg --manifest new-export/manifest.json --out new-run --json
 ```
 
-Module names start with `Stately`; invariant and transition TLA identifiers are
-stable generated IDs. The output contains `.tla`, `.cfg`, and `manifest.json`
-with exact model/spec/config digests, bounds, assumptions, event/entity mapping,
-and invariant mapping. Keep that manifest with checking results. The exporter does not run TLC or assert a verdict. Run the owned `check` command against its generated spec/config; a DOT alone cannot supply a verdict.
+The output directory holds `<module>.tla`, `<module>.cfg`, and `manifest.json`.
+The manifest maps every rule of the rules file to its TLA+ name and kind. Pass it
+to `check` as `--manifest`: the run then also writes `native-rules.json` and
+reports `nativeRules` in the JSON output, one entry per rule of the rules file
+with its native id, its TLC id, the outcome, and the length of a counterexample
+or witness. The check result itself keeps the TLC rule ids.
 
-Rejected: arbitrary JS or implementations, context/payload schemas, guards,
-actions, eventless/ordered branches, wildcards, timers, actors/internal events,
-reentry flags, hierarchy/parallel/history, unknown execution fields/profiles,
-semantic SCXML descriptor metadata, and imported configuration views. Preserve unsupported native models rather
-than deleting semantic fields to force export. Known empty editor defaults and
-presentation metadata are accepted. IDs must be printable ASCII; labels can
-retain reader-facing text. The input remains an authored native XGraph, never
-the checked configuration view.
+Encoding: `conf` is the set of active atomic state ids and each context field is
+a variable bounded by the declared domain (`CONSTRAINT InDomain`). An event is
+one TLA+ action that applies the selected transitions, then eventless
+transitions and state completion events until nothing more is enabled. Guards,
+assignments, entry and exit actions, payload fields, and `in()` translate from
+the rules expression grammar. Rule kinds map as follows:
 
-Semantics: one external event per atomic step; any event can occur next;
-unhandled events stutter. No queue, scheduler, fairness, liveness, or application
-implementation equivalence is asserted. `CHECK_DEADLOCK FALSE` allows terminal
-states; do not report a NoDeadlock proof. `TypeOK` checks membership in the finite
-control-state set. An invariant about memory/data requires an explicit supported
-control-state representation or a separately authored TLA+ spec; it cannot be
-inferred from labels.
+| Rule kind | TLC |
+| --- | --- |
+| never | INVARIANT |
+| reachable | INVARIANT on the negation; the TLC verdict is inverted and a counterexample is the witness |
+| initially | PROPERTY on a state predicate (initial states only) |
+| eventually, eventually-always, leads-to | temporal PROPERTY |
+| no-dead-ends | CHECK_DEADLOCK TRUE; `allowFinal` adds a stuttering `Done` action |
 
-The bounded checkout evaluation reproduces the existing three-event late-confirmation
-bug and checks the corrected transition. It compares the native v5/v6 transition
-relation and ignored-event behavior with the export, then runs actual TLC against
-buggy/fixed exports and compares the reachable DOT relation with the native
-mapping. This is evidence for that finite subset and fixture, not a general
-statechart-to-TLA+ equivalence proof.
+Fairness `weak` becomes `WF_vars(Next)`; a per-event list adds `WF_vars(E_<event>)`
+for each listed event; `none` adds no fairness.
+
+Rejected, with the reason in the error: a guard or assignment without an
+expression, history and choice states, `event.*` outside a handler whose event
+declares that payload field, truthiness or mixed-type comparisons, real numbers,
+more than one no-dead-ends rule, and transitions in different parallel regions
+that can fire together with overlapping exit sets. Preserve the model instead of
+deleting semantic fields to force an export; the native checker can still check
+it.
+
+Known differences from the native checker, each documented rather than hidden:
+a liveness counterexample may list a different successor at the boundary of the
+explored states; a self-transition under per-event fairness is a real step for
+TLC but a repeat of the same state for the native checker; when two regions fire
+on one event, TLC runs their actions in document order of the regions, which the
+native checker also does, but action order across regions is not asserted by
+any rule.
+
+The `native-tla.test.mjs` suite under `evals/native-check` runs the native checker
+and TLC on the same fixtures and requires identical verdicts and identical
+counterexample lengths. The corpus measurement script `native-tla-measure.mjs`
+does the same for every corpus case.
