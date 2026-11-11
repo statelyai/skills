@@ -15,7 +15,8 @@ const readText = async (path) =>
 const writeJson = (path, value) =>
   writeFile(path, `${JSON.stringify(value, null, 2)}\n`, { flag: 'wx' });
 const usage = `Usage:
-  stately-check.mjs check SPEC.tla [--config FILE] [--view FILE] [--out DIR] [--source FILE] [--scope FILE] [--manifest FILE] [--timeout SECONDS] [--offline] [--share-documents] [--compact] [--json]
+  stately-check.mjs check MODEL.json --rules RULES.json [--scope FILE] [--out DIR] [--source FILE] [--offline] [--share-documents] [--compact] [--json]
+  stately-check.mjs check SPEC.tla [--config FILE] [--view FILE] [--out DIR] [--source FILE] [--scope FILE] [--manifest FILE] [--timeout SECONDS] [--offline] [--share-documents] [--compact] [--json] (TLA+, opt-in)
   stately-check.mjs render CHART.mmd [--out FILE.svg] [--offline]
   stately-check.mjs import-trace TRACE SPEC CONFIG PROVENANCE_JSON RESULT_JSON
   stately-check.mjs import-dot DOT SPEC CONFIG PROVENANCE_JSON RESULT_JSON
@@ -49,13 +50,26 @@ export function describeError(error) {
 }
 
 const isCheckCommand = (command) =>
-  command === 'check' || command?.endsWith('.tla') || command?.startsWith('-');
+  command === 'check' ||
+  command?.endsWith('.tla') ||
+  command?.endsWith('.json') ||
+  command?.startsWith('-');
+const isNativeCheck = (args) =>
+  args.includes('--rules') ||
+  args.some((arg) => arg.startsWith('--rules=')) ||
+  args.find((arg) => !arg.startsWith('-'))?.endsWith('.json');
 
 export async function main(args) {
   const [command, ...paths] =
     isCheckCommand(args[0]) && args[0] !== 'check' ? ['check', ...args] : args;
   if (command === 'check') {
-    const { runCheck, parseCheckArgs } = await import('./run-check.mjs');
+    const native = isNativeCheck(paths);
+    const { runCheck, parseCheckArgs } = native
+      ? await import('./run-native-check.mjs').then((module) => ({
+          runCheck: module.runNativeCheck,
+          parseCheckArgs: module.parseNativeCheckArgs,
+        }))
+      : await import('./run-check.mjs');
     const options = parseCheckArgs(paths);
     const run = await runCheck(options);
     console.log(

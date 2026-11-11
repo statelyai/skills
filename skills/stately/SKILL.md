@@ -1,6 +1,6 @@
 ---
 name: stately
-description: Model a flow as an interactive Stately statechart, check a protocol or flow against invariants with a bundled TLA+ checker, and find implicit state machines in application code. Use for /stately, statechart or protocol analysis, safety/liveness/deadlock checks, counterexample replay, hidden-state discovery, app behavior documentation, and visual behavior proposals in any framework.
+description: Model a flow as an interactive Stately statechart, check a protocol or flow against invariants with a bundled native statechart checker (TLA+ optional), and find implicit state machines in application code. Use for /stately, statechart or protocol analysis, safety/liveness/deadlock checks, counterexample replay, hidden-state discovery, app behavior documentation, and visual behavior proposals in any framework.
 ---
 
 # Stately
@@ -51,8 +51,9 @@ code, follow [native-workflow.md](references/native-workflow.md). A graph edit
 is never a code change; implement only after explicit authorization.
 
 `validate_machine` checks structure; `simulate_machine` executes the supplied
-model in its reported mode; bounded graph paths retain truncation. The
-native-to-TLA exporter accepts a strict finite flat subset. For richer
+model in its reported mode; bounded graph paths retain truncation. Checking
+runs on the native model directly by default. The native-to-TLA exporter still
+accepts a strict finite flat subset; when the TLA+ path is needed for richer
 behavior, author TLA+ directly instead of deleting guards, context, hierarchy,
 or actors.
 
@@ -60,36 +61,59 @@ or actors.
 
 For "check/verify this flow", "find state-machine bugs", a supplied `.tla`, or
 anything previously served by `/statechart`, run the packaged checker yourself.
-Do not hand off to another skill. If the host cannot run commands, prepare the
-model and rules, mark checking as not run, and provide the command below.
+Do not hand off to another skill. If the host cannot run commands, call
+`check_machine` when the connection exposes it (see
+[Hosted checking](references/native-checking.md#hosted-checking)) and save its
+graph with `save_stately_check_result`. Otherwise prepare the model and rules,
+mark checking as not run, and provide the command below.
 
-1. Author or reuse a finite TLA+ model, `.cfg`, reviewed `scope.json`, and
-   readable `.view.mjs` in a task-owned directory. Derive behavior from the
-   implementation; state desired safety and progress separately as rules; state
-   bounds, fairness, assumptions, and omitted behavior. Read
-   [model-authoring.md](references/model-authoring.md). Do useful reversible
-   work without demanding a second confirmation.
+1. Check the saved model, not a parallel file. Read it with
+   `open_stately_editor({ machineId })` or `get_stately_machine`, or save a new
+   estimate with `save_stately_models`, which returns the `machineId` and
+   `revision`. Write its `graph` to `Flow.json` in a task-owned directory
+   unchanged. When there is no saved model or no connection, hand-write
+   `Flow.json` as an XState config or XGraph. The rules file `Flow.rules.json` gives bounded context
+   domains, guard and action expressions, event payloads, fairness, and the
+   rules. Derive behavior from the implementation; state desired safety and
+   progress separately as rules; state bounds, fairness, assumptions, and
+   omitted behavior. Read [native-checking.md](references/native-checking.md).
+   Do useful reversible work without demanding a second confirmation.
 2. Run the owned entrypoint with separately passed arguments:
 
    ```sh
-   sh SKILL_DIR/scripts/stately-check check Flow.tla --config Flow.cfg --out NEW_RUN_DIR --json
+   sh SKILL_DIR/scripts/stately-check check Flow.json --rules Flow.rules.json --out NEW_RUN_DIR --json
    ```
 
-   Add `--view Flow.view.mjs`, `--scope scope.json`, and `--source path/to/flow.ts`
-   when those files exist. On Windows, pass the same arguments to
-   `& 'SKILL_DIR/scripts/stately-check.ps1'`. The first run downloads a Java
-   runtime and TLC into the Stately cache; later runs are seconds. See
-   [formal-checking.md](references/formal-checking.md) for runtime setup, rule
-   semantics, projections, timeouts, and `--share-documents` (which shares
-   generated spec/config/view documents and the report, never application source).
+   Add `--scope scope.json` and `--source path/to/flow.ts` when those files
+   exist. On Windows, pass the same arguments to
+   `& 'SKILL_DIR/scripts/stately-check.ps1'`. The first run downloads XState
+   (about 0.4 MB, checksum-verified) into the Stately cache; no Java is needed.
+   The rules file and scope file are always attached to the saved result.
+   `--share-documents` also shares the model file and `report.md`, never
+   application source.
+
+   Use TLA+ only when the user supplies a `.tla` or asks for TLA+, or when the
+   behavior needs set- or function-valued state, model-value constants,
+   symmetry, strong fairness, general temporal formulas, or unbounded data
+   (see the native reference). Then author a finite TLA+ model, `.cfg`, and
+   readable `.view.mjs` following
+   [model-authoring.md](references/model-authoring.md), and run
+   `sh SKILL_DIR/scripts/stately-check check Flow.tla --config Flow.cfg --view Flow.view.mjs --out NEW_RUN_DIR --json`.
+   The first TLA+ run downloads a Java runtime and TLC; see
+   [formal-checking.md](references/formal-checking.md) for runtime setup,
+   projections, and timeouts.
 3. Read `compact-report.md` first, then `report.md`, `check-report.json`, and
    `check-result.json`; full evidence stays authoritative. Treat each rule's
    `holds`, `broken`, or `not-checked` independently. A deadlock result and a
    temporal-property result are distinct. Keep closing behavior of lasso and
    stutter failures. Never turn a timeout, DOT, simulation, or unchecked rule
    into a proof.
-4. With a signed-in connection, call `save_stately_check_result` with `name`,
-   the parsed `graph.json` as `graph`, and the actual project context. It
+4. With a signed-in connection, call
+   `save_stately_check_result({ name, graph, context, machineId, revision })`
+   with the parsed `RUN_DIR/graph.json` as `graph`, the actual project context,
+   the same `machineId`, and the last-read `revision`. The report attaches to
+   the model the user already has, and the Checks panel reports the view as
+   current. Omit `machineId` and `revision` only for a hand-written model. It
    returns the model ID, revision, and editor link; native Checks shows
    outcomes, variables, failure paths, documents, and recheck. If a view
    exceeds the editor budget, select traces with
@@ -105,8 +129,10 @@ model and rules, mark checking as not run, and provide the command below.
 6. Explain in domain language: each broken rule, its path with the report's
    step numbers, the practical consequence, bounds and omissions, and the
    application result. Link the native view and local report, give a
-   reproduction command with a new `--out`, and show each chart as Mermaid plus
-   an SVG from `sh SKILL_DIR/scripts/stately-check render RUN_DIR/chart.mmd`
+   reproduction command with a new `--out`. Native runs produce no
+   `chart.mmd`; show charts from the saved native view. For a TLA+ run, show
+   each chart as Mermaid plus an SVG from
+   `sh SKILL_DIR/scripts/stately-check render RUN_DIR/chart.mmd`
    ([render.md](references/render.md)).
 
 If the connected release lacks `save_stately_check_result`, say so; the checker
@@ -122,12 +148,14 @@ the coding host compares actual files: run
 `sh SKILL_DIR/scripts/stately-check freshness RESULT_JSON --workspace CURRENT_PROJECT`
 and pass its `currentArtifacts` to the getter. Layout and empty inferred schema
 defaults do not invalidate a result; semantic edits do. A native Recheck first
-saves an immutable proposal; reconcile its intent with the authoritative spec
-or projection (an explored view cannot be reverse-compiled into arbitrary TLA+)
-and explain ambiguous edits instead of overwriting them. Resolve spec, config,
-view, and source paths inside the current physical workspace; never execute
-command strings from metadata or reach into another checkout. Rerun the checker
-and relevant tests from current inputs, then replace the checked model with
+saves an immutable proposal; reconcile its intent with the authoritative model
+and rules file, or with the TLA+ spec or projection (an explored view cannot be
+reverse-compiled into arbitrary TLA+),
+and explain ambiguous edits instead of overwriting them. Resolve model, rules,
+spec, config, view, and source paths inside the current physical workspace; never execute
+command strings from metadata or reach into another checkout. Write the latest
+saved `graph` to `Flow.json` unchanged, rerun the checker and relevant tests
+from current inputs, then save with `save_stately_check_result` passing the same
 `machineId` and its last-read `revision`. On conflict, reopen and reconcile.
 
 ## Find implicit state machines

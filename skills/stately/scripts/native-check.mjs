@@ -248,7 +248,9 @@ function normalizeXGraph(graph) {
     reenter: edge.data?.transitionType === 'reenter',
     order,
   }));
-  return finishTree(nodes, edges);
+  const implementations = record(graph.data?.implementations) ? graph.data.implementations : {};
+  const initialContext = record(graph.data?.context) ? graph.data.context : {};
+  return finishTree(nodes, edges, initialContext, implementations);
 }
 
 function normalizeXStateConfig(config) {
@@ -321,7 +323,7 @@ function normalizeXStateConfig(config) {
   return finishTree(nodes, edges, config.context ?? {});
 }
 
-function finishTree(nodes, edges, initialContext = {}) {
+function finishTree(nodes, edges, initialContext = {}, implementations = {}) {
   const roots = [...nodes.values()].filter((node) => node.parentId === null);
   if (roots.length !== 1) fail('exactly one root node is required');
   const root = roots[0];
@@ -374,7 +376,110 @@ function finishTree(nodes, edges, initialContext = {}) {
         .filter((event) => event !== '' && !event.startsWith('xstate.done.state.')),
     ),
   ].sort();
-  return { nodes, edges, outgoing, root, paths, events, initialContext };
+  return { nodes, edges, outgoing, root, paths, events, initialContext, implementations };
+}
+
+// ---------------------------------------------------------------------------
+// Inline guard and assign extraction. Editor-authored models carry guard code as
+// `edge.data.guard.code` or `data.implementations.guards[].code.body`, and context
+// updates as `xstate.assign` params. The simple subset that fits the rules-file
+// grammar is used directly; anything else stays unresolved and is reported.
+// ---------------------------------------------------------------------------
+
+/** A JS expression body reduced to the rules grammar, or null. */
+export function extractExpression(source) {
+  if (typeof source !== 'string') return null;
+  let body = source.trim().replace(/;\s*$/, '');
+  body = body.replace(/^(?:async\s+)?(?:function\s*\w*\s*)?\(?\s*(?:\{[^}]*\}|\w+)?\s*(?:,\s*(?:\{[^}]*\}|\w+))*\s*\)?\s*=>\s*/, '');
+  const block = body.match(/^\{\s*return\s+([\s\S]*?);?\s*\}$/);
+  if (block) body = block[1];
+  if (/^\(([\s\S]*)\)$/.test(body) && !/^\(\s*\{/.test(body)) body = body.slice(1, -1);
+  body = body
+    .replace(/\bcontext\.([A-Za-z_][A-Za-z0-9_]*)/g, '$1')
+    .replace(/===/g, '==')
+    .replace(/!==/g, '!=');
+  if (/\b(?:context|snapshot|self|system|this|new|function|await|=>)\b|[\[\]{}=](?!=)/.test(body.replace(/[!<>=]=/g, ''))) return null;
+  try {
+    return parseExpression(body);
+  } catch {
+    return null;
+  }
+}
+
+/** `{ key: expr, ... }` object literal bodies (assign objects) reduced to [key, ast] pairs, or null. */
+export function extractAssignments(source) {
+  if (typeof source !== 'string') return null;
+  let body = source.trim().replace(/;\s*$/, '');
+  body = body.replace(/^(?:\(?\s*(?:\{[^}]*\}|\w+)?\s*(?:,\s*(?:\{[^}]*\}|\w+))*\s*\)?\s*=>\s*)/, '');
+  const block = body.match(/^\{\s*return\s+([\s\S]*?);?\s*\}$/);
+  if (block) body = block[1];
+  if (/^\(([\s\S]*)\)$/.test(body)) body = body.slice(1, -1).trim();
+  if (!/^\{[\s\S]*\}$/.test(body)) return null;
+  const inner = body.slice(1, -1);
+  const pairs = [];
+  let depth = 0, start = 0;
+  const parts = [];
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if ('([{'.includes(ch)) depth++;
+    else if (')]}'.includes(ch)) depth--;
+    else if (ch === ',' && depth === 0) parts.push(inner.slice(start, i)), (start = i + 1);
+  }
+  parts.push(inner.slice(start));
+  for (const part of parts) {
+    if (!part.trim()) continue;
+    const match = part.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([\s\S]+)$/);
+    if (!match) return null;
+    const ast = extractExpression(match[2]);
+    if (!ast) return null;
+    pairs.push([match[1], ast]);
+  }
+  return pairs.length ? pairs : null;
+}
+
+/** Guard and action expressions found in the model, keyed by name; explicit rules win. */
+export function extractImplementations(model) {
+  const guards = {}, actions = {}, skipped = [];
+  const literal = (value) => ({ lit: value });
+  for (const item of model.implementations.guards ?? []) {
+    const ast = extractExpression(item.code?.body);
+    if (ast) guards[item.name ?? item.id] = ast;
+    else if (item.code?.body) skipped.push(`guard ${item.name ?? item.id}`);
+  }
+  for (const item of model.implementations.actions ?? []) {
+    const pairs = extractAssignments(item.code?.body);
+    if (pairs) actions[item.name ?? item.id] = pairs;
+    else if (item.code?.body) skipped.push(`action ${item.name ?? item.id}`);
+  }
+  for (const edge of model.edges) {
+    const guard = edge.guard;
+    if (guard?.code && !guards[guard.type]) {
+      const ast = extractExpression(guard.code);
+      if (ast) guards[guard.type] = ast;
+      else skipped.push(`guard ${guard.type} (${edge.id})`);
+    }
+  }
+  const assignActions = [...model.nodes.values()].flatMap((node) => [...node.entry, ...node.exit]).concat(model.edges.flatMap((edge) => edge.actions));
+  for (const action of assignActions) {
+    if (action?.type !== 'xstate.assign' || !record(action.params)) continue;
+    const assignment = record(action.params.assignment) ? action.params.assignment : action.params;
+    const pairs = [];
+    let ok = true;
+    for (const [key, value] of Object.entries(assignment)) {
+      if (value === null || ['number', 'string', 'boolean'].includes(typeof value)) pairs.push([key, literal(value)]);
+      else if (record(value) && value['@type'] === 'code' && typeof value.expr === 'string') {
+        const ast = extractExpression(value.expr);
+        if (!ast) ok = false;
+        else pairs.push([key, ast]);
+      } else ok = false;
+    }
+    const name = action.id ?? `xstate.assign:${JSON.stringify(assignment)}`;
+    if (ok && pairs.length) {
+      action.resolvedType = name;
+      actions[name] = pairs;
+    } else skipped.push(`xstate.assign ${JSON.stringify(assignment).slice(0, 60)}`);
+  }
+  return { guards, actions, skipped };
 }
 
 export function normalizeModel(input) {
@@ -449,7 +554,12 @@ export function parseRules(input) {
     events,
     rules,
     fairness,
-    bounds: { maxStates: input.bounds?.maxStates ?? 50_000, maxAlwaysSteps: input.bounds?.maxAlwaysSteps ?? 50 },
+    bounds: {
+      maxStates: input.bounds?.maxStates ?? 50_000,
+      maxAlwaysSteps: input.bounds?.maxAlwaysSteps ?? 50,
+      // Wall-clock cap for exploration; hosted callers set it. 0 disables it.
+      timeoutMs: input.bounds?.timeoutMs ?? 0,
+    },
     assumptions: input.assumptions ?? [],
   };
 }
@@ -463,8 +573,11 @@ export function parseRules(input) {
 function loadXState() {
   // The spike resolves the v6 alpha through graph-tools (repo checkout) or a plain
   // `xstate` install next to the skill; a packaged skill would bundle it.
+  // The repo path is assembled at runtime so bundlers (Turbopack, webpack) do not try to
+  // resolve it statically; hosted builds pass `xstate` in and never reach this.
+  const repoGraphTools = ['..', '..', '..', '..', '..', 'packages', 'graph-tools', 'package.json'].join('/');
   const candidates = [
-    [new URL('../../../../../packages/graph-tools/package.json', import.meta.url), 'xstate-v6'],
+    [new URL(repoGraphTools, import.meta.url), 'xstate-v6'],
     [import.meta.url, 'xstate'],
   ];
   const errors = [];
@@ -503,11 +616,11 @@ function activeSet(model, configuration) {
  * enumerates both values), unknown assigns are reported through `collector`.
  */
 class Engine {
-  constructor(model, rules, diagnostics) {
+  constructor(model, rules, diagnostics, xstate) {
     this.model = model;
     this.rules = rules;
     this.diagnostics = diagnostics;
-    this.xstate = loadXState();
+    this.xstate = xstate ?? loadXState();
     this.xid = new Map([...model.nodes.keys()].map((id, index) => [id, `x${index}`]));
     this.native = new Map([...this.xid].map(([id, xid]) => [xid, id]));
     this.current = null; // the pre-step configuration, for in() inside guards and actions
@@ -556,7 +669,7 @@ class Engine {
   applyActions(actions, context, event, ownerId) {
     let next = context;
     for (const action of actions) {
-      const name = action?.type;
+      const name = action?.resolvedType ?? action?.type;
       const assignments = this.rules.actions[name];
       if (!assignments) {
         if (name === 'xstate.assign' || name === 'assign' || name === undefined) {
@@ -748,12 +861,28 @@ function components(byId, startIds, inside) {
   return out;
 }
 
-export function check({ model: modelInput, rules: rulesInput, modelContent, rulesContent, modelPath = 'model.json', rulesPath = 'rules.json' }) {
+/**
+ * `xstate` may be an already loaded XState v6 module (for example the cached copy from
+ * `ensureXState` in toolchain.mjs, imported by the caller); without it the module is
+ * resolved next to graph-tools or the skill.
+ */
+export function check({ model: modelInput, rules: rulesInput, modelContent, rulesContent, modelPath = 'model.json', rulesPath = 'rules.json', xstate, limits }) {
   const started = performance.now();
   const model = normalizeModel(modelInput);
   const rules = parseRules(rulesInput);
-  const diagnostics = { unresolvedGuards: new Set(), unresolvedActions: new Set(), unresolvedEdges: new Set() };
-  const engine = new Engine(model, rules, diagnostics);
+  // `limits` lets a host cap the run below what the rules file asks for.
+  if (limits?.maxStates) rules.bounds.maxStates = Math.min(rules.bounds.maxStates, limits.maxStates);
+  if (limits?.timeoutMs) rules.bounds.timeoutMs = rules.bounds.timeoutMs ? Math.min(rules.bounds.timeoutMs, limits.timeoutMs) : limits.timeoutMs;
+  const extracted = extractImplementations(model);
+  for (const [name, ast] of Object.entries(extracted.guards)) rules.guards[name] ??= ast;
+  for (const [name, pairs] of Object.entries(extracted.actions)) {
+    if (rules.actions[name]) continue;
+    for (const [variable] of pairs) if (!rules.domains[variable]) fail(`extracted action ${name} assigns ${variable}, which has no context domain (declare it in rules.context)`);
+    rules.actions[name] = pairs;
+  }
+  const diagnostics = { unresolvedGuards: new Set(), unresolvedActions: new Set(), unresolvedEdges: new Set(), extracted };
+  if (xstate && typeof xstate.getMicrosteps !== 'function') fail('the supplied xstate module is not XState v6');
+  const engine = new Engine(model, rules, diagnostics, xstate);
   const initialContexts = rules.init.map((init) => {
     const full = { ...model.initialContext, ...init };
     for (const name of Object.keys(rules.domains))
@@ -796,12 +925,19 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
     if (start.unresolved) byId(id).unresolved = true;
   }
   let complete = true;
+  let incompleteReason;
   const eventAlphabet = model.events;
   for (let cursor = 0; cursor < states.length; cursor++) {
     const state = states[cursor];
     if (state.boundary) continue;
     if (states.length > rules.bounds.maxStates) {
       complete = false;
+      incompleteReason = `exploration hit maxStates (${rules.bounds.maxStates})`;
+      break;
+    }
+    if (rules.bounds.timeoutMs && performance.now() - started > rules.bounds.timeoutMs) {
+      complete = false;
+      incompleteReason = `exploration hit the ${rules.bounds.timeoutMs} ms time limit after ${states.length} states`;
       break;
     }
     for (const event of eventAlphabet) {
@@ -963,7 +1099,7 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
       if (certain) emit(rule, 'broken', undefined, { path: certain });
       else if (path) emit(rule, 'not-checked', `a path reaches the forbidden condition but crosses ${unresolvedNote()}; it may be spurious`);
       else if (undecidable(rule.then)) emit(rule, 'not-checked', 'the predicate references unknown variables in some state');
-      else if (!complete) emit(rule, 'not-checked', 'exploration hit maxStates');
+      else if (!complete) emit(rule, 'not-checked', incompleteReason);
       else if (underApproximated) emit(rule, 'not-checked', `an unresolved assignment kept a stale value; ${unresolvedNote()}`);
       else emit(rule, 'holds', anyUnresolved ? `holds under over-approximation of ${unresolvedNote()}` : undefined);
     } else if (rule.kind === 'initially') {
@@ -982,18 +1118,18 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
       const path = certain ?? shortestPath(goal);
       if (certain) emit(rule, 'holds');
       else if (path) emit(rule, 'not-checked', `only reached through ${unresolvedNote()}`);
-      else if (!complete || anyUnresolved) emit(rule, 'not-checked', complete ? unresolvedNote() : 'exploration hit maxStates');
+      else if (!complete || anyUnresolved) emit(rule, 'not-checked', complete ? unresolvedNote() : incompleteReason);
       else emit(rule, 'broken', 'no reachable state satisfies the condition');
     } else if (rule.kind === 'no-dead-ends') {
       const path = shortestPath((state) => !state.boundary && !state.steps.length && !(rule.allowFinal && isTerminalFinal(state)));
       if (path) {
         if (anyUnresolved) emit(rule, 'not-checked', `a dead end was found but ${unresolvedNote()}`);
         else emit(rule, 'broken', undefined, { path, loopStart: path.length - 1, stutters: true });
-      } else if (!complete || anyUnresolved) emit(rule, 'not-checked', complete ? unresolvedNote() : 'exploration hit maxStates');
+      } else if (!complete || anyUnresolved) emit(rule, 'not-checked', complete ? unresolvedNote() : incompleteReason);
       else emit(rule, 'holds');
     } else if (rule.kind === 'eventually' || rule.kind === 'leads-to' || rule.kind === 'eventually-always') {
       if (!complete) {
-        emit(rule, 'not-checked', 'exploration hit maxStates');
+        emit(rule, 'not-checked', incompleteReason);
         continue;
       }
       if (anyUnresolved) {
@@ -1058,6 +1194,10 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
     'Statechart semantics are XState v6 (pure transition functions). Guards and actions are evaluated only through the expressions supplied in the rules file; inline code is not executed.',
     fairnessText,
     'Bounded context domains act as constraints: a state outside its domain is recorded but not explored further.',
+    ...(Object.keys(extracted.guards).length + Object.keys(extracted.actions).length
+      ? [`Inline implementations used from the model: guards ${Object.keys(extracted.guards).join(', ') || 'none'}; actions ${Object.keys(extracted.actions).map((name) => name.split(':')[0]).join(', ') || 'none'}. Explicit rules-file expressions take precedence.`]
+      : []),
+    ...(extracted.skipped.length ? [`Inline code outside the supported expression subset stays unresolved: ${extracted.skipped.join('; ')}`] : []),
     ...(anyUnresolved ? [`Unresolved guards/actions explored both ways (over-approximation): ${unresolvedNote()}`] : []),
     ...rules.assumptions,
   ];
@@ -1081,6 +1221,7 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
         fairness: rules.fairness.kind === 'events' ? rules.fairness.events : rules.fairness.kind,
         events: eventAlphabet,
         exploredStates: explored.length,
+        ...(incompleteReason ? { incompleteReason } : {}),
         boundaryStates: explored.filter((state) => state.boundary).length,
         transitions: transitions.length,
         elapsedMs: Math.round(elapsedMs * 100) / 100,
@@ -1133,13 +1274,8 @@ function modelToXGraph(modelInput, model) {
   return { id: model.root.id, nodes, edges, annotations: [], data: {} };
 }
 
-export function nativeGraph({ result, model }, modelInput, { summary } = {}) {
-  const graph = modelToXGraph(modelInput, model);
-  graph.data ??= {};
-  graph.data.meta ??= {};
-  // The editor stores an explicit 'normal' type on every ordinary state; the view digest
-  // must be computed over that form or the Checks panel reports the view as stale.
-  for (const node of graph.nodes) if (node.data.type == null) node.data.type = 'normal';
+/** The check report for a run, independent of any graph; `nativeGraph` attaches it. */
+export function checkReport({ result }, { summary } = {}) {
   const states = new Map(result.states.map((state) => [state.id, state]));
   const steps = new Map(result.transitions.map((step) => [step.id, step]));
   const traces = result.counterexamples.map((trace) => ({
@@ -1154,7 +1290,7 @@ export function nativeGraph({ result, model }, modelInput, { summary } = {}) {
     ...(trace.stutters !== undefined ? { stutters: trace.stutters } : {}),
   }));
   const counts = (outcome) => result.rules.filter((rule) => rule.outcome === outcome).length;
-  const report = {
+  return {
     schemaVersion: 'stately.check-report.v1',
     runId: `run_${sha256(JSON.stringify([result.binding.artifacts.map((a) => a.sha256), result.rules])).slice(0, 24)}`,
     status: result.rules.some((rule) => rule.outcome === 'not-checked') || !result.checker.complete ? 'incomplete' : 'complete',
@@ -1175,6 +1311,17 @@ export function nativeGraph({ result, model }, modelInput, { summary } = {}) {
     checkedAt: result.checker.checkedAt,
     applicationChecks: [],
   };
+}
+
+export function nativeGraph(run, modelInput, { summary } = {}) {
+  const { result, model } = run;
+  const graph = modelToXGraph(modelInput, model);
+  graph.data ??= {};
+  graph.data.meta ??= {};
+  // The editor stores an explicit 'normal' type on every ordinary state; the view digest
+  // must be computed over that form or the Checks panel reports the view as stale.
+  for (const node of graph.nodes) if (node.data.type == null) node.data.type = 'normal';
+  const report = checkReport(run, { summary });
   graph.data.meta['@statelyai.checkBinding'] = { artifacts: report.artifacts };
   graph.data.meta['@statelyai.checkSummary'] = {
     schemaVersion: result.schemaVersion,
@@ -1189,7 +1336,7 @@ export function nativeGraph({ result, model }, modelInput, { summary } = {}) {
     partial: false,
   };
   for (const node of graph.nodes) {
-    const broken = traces.filter((trace) => trace.states.at(-1).nodeIds.includes(node.id) && trace.ruleId.startsWith('invariant:'));
+    const broken = report.traces.filter((trace) => trace.states.at(-1).nodeIds.includes(node.id) && trace.ruleId.startsWith('invariant:'));
     if (broken.length) node.data.color = 'red';
   }
   return attachReport(graph, report);
@@ -1225,11 +1372,19 @@ export function humanReport({ result }) {
 // CLI: node native-check.mjs MODEL.json RULES.json --out DIR [--json]
 // ---------------------------------------------------------------------------
 
+/** The checksum-verified XState copy from the Stately cache, downloaded on first use. */
+export async function loadCachedXState({ offline = false, progress = (line) => console.error(line) } = {}) {
+  const { ensureXState } = await import(/* webpackIgnore: true */ /* turbopackIgnore: true */ './toolchain.mjs');
+  const ensured = await ensureXState({ offline, progress });
+  const xstate = await import(/* webpackIgnore: true */ /* turbopackIgnore: true */ pathToFileURL(ensured.file).href);
+  return { ...xstate, version: ensured.version };
+}
+
 export async function main(argv) {
   const { values, positionals } = parseArgs({
     args: argv,
     allowPositionals: true,
-    options: { out: { type: 'string' }, json: { type: 'boolean' } },
+    options: { out: { type: 'string' }, json: { type: 'boolean' }, offline: { type: 'boolean' } },
   });
   if (positionals.length !== 2) fail('usage: native-check MODEL.json RULES.json --out DIR');
   const [modelPath, rulesPath] = positionals;
@@ -1242,6 +1397,7 @@ export async function main(argv) {
     rulesContent,
     modelPath: basename(modelPath),
     rulesPath: basename(rulesPath),
+    xstate: await loadCachedXState({ offline: values.offline === true }),
   });
   const graph = nativeGraph(run, JSON.parse(modelContent));
   if (values.out) {

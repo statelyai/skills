@@ -1,7 +1,12 @@
 # Owned TLA+ checking
 
-Use this entrypoint for safety invariants, temporal properties, fairness,
-deadlocks, constrained models, and multiple rules. Pstack and mise are optional.
+The default checker runs on the native statechart and a rules file; see
+[native-checking.md](native-checking.md). Use this TLA+ path when the user
+supplies a `.tla` or asks for TLA+, or when the model needs set- or
+function-valued state, model-value constants, symmetry, strong fairness,
+general temporal formulas, or unbounded data. It covers safety invariants,
+temporal properties, fairness, deadlocks, constrained models, and multiple
+rules. Pstack and mise are optional.
 
 ```sh
 sh SKILL_DIR/scripts/stately-check check Flow.tla --config Flow.cfg --view Flow.view.mjs --scope scope.json --out NEW_RUN_DIR --source src/flow.ts --json
