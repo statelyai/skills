@@ -219,6 +219,12 @@ export function evaluate(ast, scope) {
 function normalizeXGraph(graph) {
   if (!Array.isArray(graph.nodes) || !Array.isArray(graph.edges))
     fail('XGraph needs nodes and edges arrays');
+  const actions = (value, owner) => {
+    if (value == null) return [];
+    if (!Array.isArray(value) || value.some((action) => !record(action) || typeof action.type !== 'string' || !action.type.trim()))
+      fail(`${owner} actions must be an array of objects with a non-empty type`);
+    return value;
+  };
   const nodes = new Map();
   for (const node of graph.nodes) {
     if (!record(node.data) || typeof node.data.key !== 'string') fail(`node ${node.id} lacks data.key`);
@@ -230,8 +236,8 @@ function normalizeXGraph(graph) {
       history: node.data.history ?? false,
       initialId: node.data.initialId ?? null,
       children: [],
-      entry: node.data.entry ?? [],
-      exit: node.data.exit ?? [],
+      entry: actions(node.data.entry, `node ${node.id} entry`),
+      exit: actions(node.data.exit, `node ${node.id} exit`),
       always: [],
     });
   }
@@ -244,7 +250,7 @@ function normalizeXGraph(graph) {
         : [edge.targetId, ...(edge.data?.additionalTargetIds ?? [])].filter(Boolean),
     eventType: edge.data?.eventType ?? '',
     guard: edge.data?.guard ?? null,
-    actions: edge.data?.actions ?? [],
+    actions: actions(edge.data?.actions, `edge ${edge.id}`),
     reenter: edge.data?.transitionType === 'reenter',
     order,
   }));
@@ -564,6 +570,49 @@ export function parseRules(input) {
   };
 }
 
+function validateStateReferences(model, rules) {
+  const nodes = [...model.nodes.values()];
+  const references = new Map();
+  const matches = (ref) => {
+    return nodes
+      .filter((node) => node.id === ref || node.path.join('.') === ref || node.key === ref || node.path.join('.').endsWith(`.${ref}`))
+      .map((node) => node.id);
+  };
+  const visit = (ast, owner) => {
+    if (!ast) return;
+    if (ast.call === 'in') {
+      if (ast.args.length !== 1 || typeof ast.args[0]?.lit !== 'string')
+        fail(`${owner}: in() needs one literal state name or node ID`);
+      const ref = ast.args[0].lit;
+      if (references.has(ref)) return;
+      const found = ref ? matches(ref) : [];
+      if (!found.length) {
+        const suffix = nodes.map((node) => node.id).filter((id) => id.endsWith(`.${ref}`));
+        const suggestions = (suffix.length ? suffix : nodes.map((node) => node.id)).slice(0, 3);
+        fail(`${owner}: unknown state reference ${JSON.stringify(ref)} in in(); use a node ID such as ${suggestions.join(', ')}`);
+      }
+      if (found.length > 1)
+        fail(`${owner}: ambiguous state reference ${JSON.stringify(ref)} in in(); use a unique node ID or state path: ${found.join(', ')}`);
+      references.set(ref, found[0]);
+    }
+    for (const child of [ast.left, ast.right, ast.arg, ast.cond, ast.then, ast.otherwise]) visit(child, owner);
+    for (const arg of ast.args ?? []) visit(arg, owner);
+  };
+  for (const [name, ast] of Object.entries(rules.guards)) visit(ast, `guard ${name}`);
+  for (const [name, assignments] of Object.entries(rules.actions))
+    for (const [, ast] of assignments) visit(ast, `action ${name}`);
+  for (const rule of rules.rules) {
+    visit(rule.when, `rule ${rule.id}`);
+    visit(rule.then, `rule ${rule.id}`);
+  }
+  return references;
+}
+
+export function nativeCheckExitCode(result) {
+  if (result.rules.some((rule) => rule.outcome === 'broken')) return 1;
+  return !result.checker.complete || result.rules.some((rule) => rule.outcome === 'not-checked') ? 2 : 0;
+}
+
 // ---------------------------------------------------------------------------
 // Statechart semantics come from XState v6's pure transition functions. The
 // checker only interns snapshots, enumerates events and searches the graph.
@@ -616,11 +665,12 @@ function activeSet(model, configuration) {
  * enumerates both values), unknown assigns are reported through `collector`.
  */
 class Engine {
-  constructor(model, rules, diagnostics, xstate) {
+  constructor(model, rules, diagnostics, xstate, stateReferences) {
     this.model = model;
     this.rules = rules;
     this.diagnostics = diagnostics;
     this.xstate = xstate ?? loadXState();
+    this.stateReferences = stateReferences;
     this.xid = new Map([...model.nodes.keys()].map((id, index) => [id, `x${index}`]));
     this.native = new Map([...this.xid].map(([id, xid]) => [xid, id]));
     this.current = null; // the pre-step configuration, for in() inside guards and actions
@@ -629,19 +679,13 @@ class Engine {
   }
   scope(configuration, context, event) {
     const active = activeSet(this.model, configuration);
-    const model = this.model;
     return {
       vars: context,
       event,
       inState: (ref) => {
-        if (active.has(ref)) return true;
-        const id = model.paths.get(ref);
-        if (id !== undefined) return active.has(id);
-        for (const activeId of active) {
-          const node = model.nodes.get(activeId);
-          if (node.key === ref || node.path.join('.').endsWith(`.${ref}`)) return true;
-        }
-        return false;
+        const id = this.stateReferences.get(ref);
+        if (id === undefined) fail(`unvalidated state reference ${JSON.stringify(ref)} in in()`);
+        return active.has(id);
       },
     };
   }
@@ -880,9 +924,10 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
     for (const [variable] of pairs) if (!rules.domains[variable]) fail(`extracted action ${name} assigns ${variable}, which has no context domain (declare it in rules.context)`);
     rules.actions[name] = pairs;
   }
+  const stateReferences = validateStateReferences(model, rules);
   const diagnostics = { unresolvedGuards: new Set(), unresolvedActions: new Set(), unresolvedEdges: new Set(), extracted };
   if (xstate && typeof xstate.getMicrosteps !== 'function') fail('the supplied xstate module is not XState v6');
-  const engine = new Engine(model, rules, diagnostics, xstate);
+  const engine = new Engine(model, rules, diagnostics, xstate, stateReferences);
   const initialContexts = rules.init.map((init) => {
     const full = { ...model.initialContext, ...init };
     for (const name of Object.keys(rules.domains))
@@ -1410,7 +1455,7 @@ export async function main(argv) {
   if (values.json)
     console.log(JSON.stringify({ rules: run.result.rules, states: run.result.states.length, transitions: run.result.transitions.length, elapsedMs: run.result.checker.bounds.elapsedMs, out: values.out }, null, 2));
   else process.stdout.write(humanReport(run));
-  return run.result.rules.some((rule) => rule.outcome === 'broken') ? 1 : 0;
+  return nativeCheckExitCode(run.result);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)

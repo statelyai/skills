@@ -40,6 +40,10 @@ into the Stately cache. Later runs reuse it.
 - An XState v5 machine config with `states`, `initial`, `on`, `always`,
   `after`, `onDone`, and `invoke.onDone`.
 
+In XGraph, entry, exit, and transition actions must be arrays of objects with a
+non-empty `type`, such as `[{ "type": "markSaved" }]`. A malformed action list
+stops checking before exploration.
+
 ## What the checker covers
 
 - Statechart semantics come from XState v6 pure transition functions:
@@ -117,8 +121,9 @@ Expressions are parsed, never evaluated as code. The grammar has:
 - Names: context variables and `event.field`.
 - Operators: `||`, `&&`, `!`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `+`, `-`,
   `*`, `/`, `%`, `cond ? a : b`, and parentheses.
-- Functions: `in('State.path')` (also accepts a node id or a trailing state
-  key), `min`, `max`, `abs`.
+- Functions: `in('State.path')` (also accepts a node id or a unique trailing
+  state key), `min`, `max`, `abs`. `in()` needs one literal string. Unknown or
+  ambiguous state references stop checking; use a unique node ID or state path.
 
 ### Fairness
 
@@ -175,8 +180,10 @@ TLA+ path:
   runs, alongside the TLA-named `specPath` and `configPath`.
 - `run.json` and `inputs/`: run metadata and copies of the inputs.
 
-Exit codes: `0` when every rule holds, `1` when a rule is broken, `2` on an
-error.
+Both native checker CLIs return `0` when every rule holds, `1` when a rule is
+broken, and `2` when any rule is `not-checked`, exploration is incomplete, or the
+checker errors. When rules are both broken and `not-checked`, the exit code is
+`1`; read each rule's outcome in the report.
 
 ## Hosted checking
 
