@@ -5,11 +5,12 @@ description: Model a flow as an interactive Stately statechart, check a protocol
 
 # Stately
 
-Three requests cover most uses. Each has its own section below.
+Common requests and their workflows:
 
 | Request | Section |
 | --- | --- |
 | "model this flow" | [Model a flow](#model-a-flow) |
+| "show me the happy path" or "play through this scenario" | [Present scenarios](#present-scenarios) |
 | "check that this protocol follows these invariants" | [Check invariants](#check-invariants) |
 | "find the implicit state machines in my app" | [Find implicit state machines](#find-implicit-state-machines) |
 
@@ -69,6 +70,33 @@ runs on the native model directly by default. The native-to-TLA exporter still
 accepts a strict finite flat subset; when the TLA+ path is needed for richer
 behavior, author TLA+ directly instead of deleting guards, context, hierarchy,
 or actors.
+
+## Present scenarios
+
+For an existing model, inspect the connected `open_stately_editor` schema for
+`session`. If absent, report the server update and catalog refresh needed. Read the
+model before selecting its event sequence. Choose actual event objects, payloads,
+input, and context from the model and source. Clarify ambiguous outcomes.
+
+- “Show me the happy path” normally means `session.highlights` with a
+  `{ kind: "scenario", scenario: { events: [...] } }` group. Highlight the whole
+  trace. Multiple labeled groups support comparisons, colors, and `showLegend`.
+- “Play through the happy path” normally means `session.simulation` with
+  `{ events: [...] }`. Omit `step` to open at the initial snapshot. An explicit
+  starting step selects that event position; the event count selects the end.
+- Explicit requests for highlighting or simulation override these wording
+  conventions. They are not reserved phrases.
+
+Pass the selected saved `machineId` and `session` to `open_stately_editor`. These
+options are session-only. Highlight groups replace the whole list; `[]` clears it.
+During simulation, normal current-step highlights replace custom annotations.
+Opening a scenario loads its history for user navigation. Do not simulate clicks,
+add an autoplay loop, execute external actors, or wait for timers. Report replay
+diagnostics and the selected step. Ignored events count as steps, but do not prove
+the intended transition occurred.
+
+See [session presentation](https://github.com/statelyai/viz/blob/main/docs/editor/session-presentation.md#ask-for-highlights-or-simulation)
+for concrete MCP calls and the highlight/simulation distinction.
 
 ## Check invariants
 
