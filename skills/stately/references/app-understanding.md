@@ -100,7 +100,7 @@ its checks. An empty checks array explicitly removes that criterion's recipes.
 
 For runtime evidence, use the target repository's verification runner and import
 its report from Features. Viz includes `scripts/verification/run-check.mjs` and
-[the verification workflow](../../../../../docs/editor/verification.md).
+[the verification workflow](https://github.com/statelyai/viz/blob/main/docs/editor/verification.md).
 Source-derived observations never establish a runtime pass. Imported outcomes
 are caller-reported. A matching documented source revision does not establish
 freshness against the current repository or deployment.
