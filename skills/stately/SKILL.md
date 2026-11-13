@@ -127,6 +127,10 @@ mark checking as not run, and provide the command below.
    with the parsed `RUN_DIR/graph.json` as `graph`, the actual project context,
    the same `machineId`, and the last-read editor `revision`. On a revision
    conflict, reopen the model and rerun if its graph changed before retrying.
+   If checking needs a history flag or another change to the saved model, keep
+   that variant local and label its verdicts separately. Do not attach the
+   variant to the saved `machineId`. Only a matching checked graph can receive
+   a new report on that model.
    If saving is forbidden, try another already connected account that can read
    and edit the model. Reopen its graph and revision, rerun if the graph differs,
    and save there. If no connection can edit it, keep the local report and say

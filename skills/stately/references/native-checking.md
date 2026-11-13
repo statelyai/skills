@@ -173,7 +173,9 @@ TLA+ path:
 - `check-result.json` (`stately.check-result.v1`) and `check-report.json`
   (`stately.check-report.v1`).
 - `graph.json`: the native model with the check report attached. Pass it to
-  `save_stately_check_result`.
+  `save_stately_check_result`. For an existing machine ID, its checked graph
+  must match the saved model. Keep checker-only history flags or other
+  instrumented variants local, or save them as separate models.
   The saved check lists bound artifact paths and SHA-256 hashes. These bindings
   are separate from per-state source citations on an estimated application flow.
 - The report's `recheck` block carries `modelPath` and `rulesPath` for native
