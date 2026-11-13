@@ -40,6 +40,10 @@ into the Stately cache. Later runs reuse it.
 - An XState v5 machine config with `states`, `initial`, `on`, `always`,
   `after`, `onDone`, and `invoke.onDone`.
 
+In XGraph, entry, exit, and transition actions must be arrays of objects with a
+non-empty `type`, such as `[{ "type": "markSaved" }]`. A malformed action list
+stops checking before exploration.
+
 ## What the checker covers
 
 - Statechart semantics come from XState v6 pure transition functions:
@@ -117,8 +121,9 @@ Expressions are parsed, never evaluated as code. The grammar has:
 - Names: context variables and `event.field`.
 - Operators: `||`, `&&`, `!`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `+`, `-`,
   `*`, `/`, `%`, `cond ? a : b`, and parentheses.
-- Functions: `in('State.path')` (also accepts a node id or a trailing state
-  key), `min`, `max`, `abs`.
+- Functions: `in('State.path')` (also accepts a node id or a unique trailing
+  state key), `min`, `max`, `abs`. `in()` needs one literal string. Unknown or
+  ambiguous state references stop checking; use a unique node ID or state path.
 
 ### Fairness
 
@@ -163,16 +168,24 @@ The output directory must be new or empty. It contains the same files as the
 TLA+ path:
 
 - `compact-report.md` and `report.md`: readable reports.
+  The native report lists explored states, transitions, the state budget, and
+  the rules-file fairness assumption. It does not use TLA+ limits.
 - `check-result.json` (`stately.check-result.v1`) and `check-report.json`
   (`stately.check-report.v1`).
 - `graph.json`: the native model with the check report attached. Pass it to
-  `save_stately_check_result`.
+  `save_stately_check_result`. For an existing machine ID, its checked graph
+  must match the saved model. Keep checker-only history flags or other
+  instrumented variants local, or save them as separate models.
+  The saved check lists bound artifact paths and SHA-256 hashes. These bindings
+  are separate from per-state source citations on an estimated application flow.
 - The report's `recheck` block carries `modelPath` and `rulesPath` for native
   runs, alongside the TLA-named `specPath` and `configPath`.
 - `run.json` and `inputs/`: run metadata and copies of the inputs.
 
-Exit codes: `0` when every rule holds, `1` when a rule is broken, `2` on an
-error.
+Both native checker CLIs return `0` when every rule holds, `1` when a rule is
+broken, and `2` when any rule is `not-checked`, exploration is incomplete, or the
+checker errors. When rules are both broken and `not-checked`, the exit code is
+`1`; read each rule's outcome in the report.
 
 ## Hosted checking
 

@@ -89,3 +89,18 @@ the shared project documentation API. Read both layers before a user-requested
 reconciliation; apply the preservation and draft rules above. Do not imply the
 bot has changed existing authored models, confirmed requirements or advanced a
 review baseline. Source scans execute no application code or tests.
+
+## Verification recipes and evidence
+
+Acceptance criteria may contain `checks` with command arguments, user steps,
+expected results, scope and an optional recorded run. Preserve these annotations
+when updating matching criterion IDs. Keep old results when instructions change;
+the Features page identifies outdated results. Removing a criterion also removes
+its checks. An empty checks array explicitly removes that criterion's recipes.
+
+For runtime evidence, use the target repository's verification runner and import
+its report from Features. Viz includes `scripts/verification/run-check.mjs` and
+[the verification workflow](../../../../../docs/editor/verification.md).
+Source-derived observations never establish a runtime pass. Imported outcomes
+are caller-reported. A matching documented source revision does not establish
+freshness against the current repository or deployment.

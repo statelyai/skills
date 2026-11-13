@@ -44,6 +44,7 @@ function configuredModel(result) {
 export function completeHumanReport(text, result) {
   const checker = result.checker;
   const counts = checker.stateCounts ?? {};
+  const native = checker.name === 'stately-native-check';
   const count = (outcome) =>
     result.rules.filter((rule) => rule.outcome === outcome).length;
   const scope = checker.bounds.domain;
@@ -53,31 +54,32 @@ export function completeHumanReport(text, result) {
     '',
     `${checker.name}: ${checker.version}`,
     `Configured rules: ${count('holds')} hold; ${count('broken')} broken; ${count('not-checked')} not checked.`,
-    `Exploration complete: ${checker.complete}. Distinct checked states: ${counts.distinct ?? 'unknown'}.`,
-    `Chart budget: ${checker.bounds.chartStates}; rerun budget: ${checker.bounds.rerunStates}; wall-time limit: ${checker.bounds.timeoutSeconds === 0 ? 'disabled' : `${checker.bounds.timeoutSeconds}s`}.`,
+    `Exploration complete: ${checker.complete}. Distinct checked states: ${native ? checker.bounds.exploredStates : counts.distinct ?? 'unknown'}.`,
+    ...(native
+      ? [`State budget: ${checker.bounds.maxStates}. Explored transitions: ${checker.bounds.transitions}.`]
+      : [`Chart budget: ${checker.bounds.chartStates}; rerun budget: ${checker.bounds.rerunStates}; wall-time limit: ${checker.bounds.timeoutSeconds === 0 ? 'disabled' : `${checker.bounds.timeoutSeconds}s`}.`]),
     '',
     '## Domain bounds',
     '',
     scope
       ? '```json\n' + JSON.stringify(scope, null, 2) + '\n```'
-      : 'No separate domain bounds were supplied. Inspect the exact specification/configuration; finite observed state counts do not establish an application-wide bound.',
+      : native
+        ? 'No context domains were supplied. Finite observed state counts do not establish an application-wide bound.'
+        : 'No separate domain bounds were supplied. Inspect the exact specification/configuration; finite observed state counts do not establish an application-wide bound.',
     '',
     '## Assumptions and proof limits',
     '',
     ...checker.assumptions.map((assumption) => `- ${assumption}`),
-    '- Fairness is defined by the supplied TLA+ specification; no additional fairness is inferred.',
+    ...(native ? [] : ['- Fairness is defined by the supplied TLA+ specification; no additional fairness is inferred.']),
     '- Native playback inspects checker evidence. Application replay has not run as part of this checking command; record actual application tests separately.',
     '',
     '## Rule outcomes',
     '',
     ...result.rules.map((rule) => `- ${rule.id}: ${rule.outcome}`),
     '',
-    '## Configured model',
-    '',
-    '```text',
-    ...sections.map((section) => `${section.key} ${section.tokens.join(' ')}`),
-    '```',
-    '',
+    ...(native
+      ? []
+      : ['## Configured model', '', '```text', ...sections.map((section) => `${section.key} ${section.tokens.join(' ')}`), '```', '']),
     ...result.rules.flatMap((rule) =>
       rule.description
         ? [`${rule.name} (${rule.kind}): ${rule.description}`, '']

@@ -6,7 +6,7 @@ import { parseArgs } from 'node:util';
 import { artifact, parseCheckResult } from './check-result.mjs';
 import { attachReport } from './checked-view.mjs';
 import { completeHumanReport, parseCheckScope } from './check-scope.mjs';
-import { CHECKER_NAME, CHECKER_VERSION, check, checkReport, humanReport, loadCachedXState, nativeGraph } from './native-check.mjs';
+import { CHECKER_NAME, CHECKER_VERSION, check, checkReport, humanReport, loadCachedXState, nativeCheckExitCode, nativeGraph } from './native-check.mjs';
 
 const text = async (file) =>
   new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(await readFile(file));
@@ -159,9 +159,8 @@ export async function runNativeCheck({ model, rules, scope, out, offline = false
     nativeViewError = error.message;
   }
 
-  const broken = checked.rules.some((rule) => rule.outcome === 'broken');
-  const exit = broken ? 1 : 0;
   const status = checked.rules.some((rule) => rule.outcome === 'not-checked') || !checked.checker.complete ? 'incomplete' : 'complete';
+  const exit = nativeCheckExitCode(checked);
   await mkdir(join(output, 'inputs'), { recursive: true });
   await writeFile(join(output, 'inputs/model.json'), await readFile(modelPath), { flag: 'wx' });
   await writeFile(join(output, 'inputs/rules.json'), await readFile(rulesPath), { flag: 'wx' });
