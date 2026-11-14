@@ -35,7 +35,7 @@ into the Stately cache. Later runs reuse it.
 `Flow.json` is one of:
 
 - A native XGraph with `nodes` and `edges`: the `graph` returned by
-  `open_stately_editor` or `get_stately_machine`, or a model saved with
+  `read_stately_model` or `get_stately_machine`, or a model saved with
   `save_stately_models`.
 - An XState v5 machine config with `states`, `initial`, `on`, `always`,
   `after`, `onDone`, and `invoke.onDone`.
