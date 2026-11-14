@@ -21,16 +21,38 @@ The coding host reads source. Stately stores and displays the resulting estimate
 
 ## During ordinary coding work
 
-1. Read the saved inventory/spec with `get_stately_spec` and affected models with
-   `open_stately_editor`. Inspect the code changes and current source/test bytes.
-2. Update affected summaries, entry points and citations. Update stories and
-   acceptance criteria when intent changes, and flows when behavior changes.
-   Reuse existing machine IDs, requirement IDs and stable feature names.
-3. Feature saves replace the inventory. Preserve unrelated entries and include
-   the complete retained inventory. Preserve human-authored prose and confirmed
-   or retired decisions. New authored entries remain drafts. Surface conflicting
+1. Scope the read to the changed capability. Reuse saved IDs and results already
+   in this task's context. Use `get_stately_spec` with `machineId` and `query` when the model is known,
+   or `projectId` and `query` otherwise (a feature name or source path fragment).
+   A machine may carry the whole project inventory; keep `query` on small reads. Read the
+   full project inventory only for an app-wide audit, export, or an explicit
+   inventory replacement. A scoped result does not establish full coverage.
+2. Inspect current source and tests. Read only models whose flow, stories or
+   acceptance criteria need changes. Reuse an unchanged graph already in context;
+   when freshness needs checking, pass its `knownRevision` to
+   `read_stately_model({ machineId, knownRevision })`. A match returns a short
+   confirmation; a changed revision returns the current graph. After a conflict,
+   reread and reconcile. Do not reuse results across connections or projects, or
+   after losing the graph from context. Fetch flow guidance once per task,
+   connection and scope, and reuse it while it remains in context. Fetch again
+   after a scope/connection change or tool catalog refresh.
+3. Update only affected summaries, entry points and citations. Use
+   `save_stately_models` with `featuresMode: "merge"` to send changed features by
+   stable name and preserve unrelated entries on the target machines. Omit
+   `features` when the inventory did not change. Send `expectedRevision` for
+   existing machines. The default `replace` mode requires the complete retained
+   inventory; never use a scoped read as replacement input. On older deployments
+   without merge/query/revision options, read the affected machine's full
+   inventory before a replacement and preserve all its entries, or report the
+   scoped update as pending. Preserve human-authored prose and confirmed or
+   retired decisions. New authored entries remain drafts. Surface conflicting
    interpretations for review. Missing functionality is **possibly removed**;
    do not silently delete it or restore retired requirements.
+   Background maintenance must not open a view. Saves return links without an
+   editor attachment. Use `open_stately_editor` or `visualize_machine` only when
+   the user asks to see the result. If a host lacks `read_stately_model`, reuse
+   graph/revision data already in context or report the update pending. Do not
+   open the editor as a workaround.
 4. Save into the same project and existing models with current revision guards
    wherever the tool supports them. Reopen and reconcile conflicts. Never copy a
    proposal into a fresh estimate to manufacture a match. Use source snapshots

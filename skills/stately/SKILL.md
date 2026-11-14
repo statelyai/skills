@@ -27,7 +27,7 @@ connection. Keep the connection that saved or successfully read a model for
 later reads and saves. For a supplied model ID or link with no known connection,
 try `get_stately_machine` through the available Stately connections, read-only,
 before treating `forbidden` or `not found` from one as a final access failure.
-On a connection that can read the model, call `open_stately_editor` for the
+On a connection that can read the model, call `read_stately_model` for the
 canonical graph and editor revision. The resource's `projectVersionId` is not
 that revision. If the read returned a project ID and `get_stately_project` is
 available, prefer a connection with `permissions.canEdit` for that project.
@@ -39,7 +39,9 @@ different model.
 
 Read the relevant source, contracts, and tests first. Then:
 
-1. Call `get_stately_flow_guidance` for the current modeling rules. Trace a
+1. Call `get_stately_flow_guidance` once per task, connection and scope for the
+   modeling rules. Reuse guidance already in context. Fetch again after switching
+   scope or connection, refreshing the tool catalog, or losing it from context. Trace a
    normal and a failure path through their owning source and tests, including
    dependencies that decide a transition. Check event order, side effects,
    and cleanup before drawing the graph.
@@ -49,11 +51,16 @@ Read the relevant source, contracts, and tests first. Then:
    snapshot and physical working directory. Mark each item observed, inferred,
    or assumed. First call `validate_machine` with
    `{ format: "xgraph", machine: graph }` when available, then
-   `visualize_machine` with the same input to inspect its branches when
-   available. Resolve errors and source mismatches before saving. Show the
+   `visualize_machine` with the same input only when the user asks to see
+   the diagram. Resolve errors and source mismatches before saving. Show the
    returned flow outline and link as returned. The hosted connection needs
    sign-in (in Claude Code, run `/mcp` and authenticate `stately`). Viewing a
    saved model also requires sign-in and access to its project.
+   Saving does not open the editor. For an explicit request to see saved models,
+   call `open_stately_editor` afterward with their returned IDs. Background
+   documentation uses `read_stately_model` for graphs and revisions and does not
+   call visualization tools. If quiet reads are unavailable, reuse graph data
+   already in context or report the update pending instead of opening a view.
 3. Without a connection or project, return Mermaid and local artifacts.
 
 For "help me understand this app", onboarding, or keeping app documentation
@@ -110,9 +117,11 @@ mark checking as not run, and provide the command below.
 
 1. Check the saved model, not a parallel file. Select its connection as above,
    then read its graph, revision, and link with
-   `open_stately_editor({ machineId })`. Alternatively, save a new
+   `read_stately_model({ machineId })`. Alternatively, save a new
    estimate with `save_stately_models`, then reopen it for its graph and
-   editor revision. Write that `graph` to `Flow.json` in a task-owned directory
+   editor revision. Reuse a graph already read in this task when unchanged; check
+   freshness with `knownRevision` when needed, and fetch the full graph when it
+   is no longer in context. Write that `graph` to `Flow.json` in a task-owned directory
    unchanged. When there is no saved model or no connection, hand-write
    `Flow.json` as an XState config or XGraph. The rules file `Flow.rules.json` gives bounded context
    domains, guard and action expressions, event payloads, fairness, and the
@@ -198,7 +207,7 @@ not change its access or visibility.
 
 Select the saved model's connection as above. Use
 `get_stately_check_result` for the report and freshness. Read the latest graph,
-editor revision, and link with `open_stately_editor({ machineId })`. Source
+editor revision, and link with `read_stately_model({ machineId })`. Source
 freshness is unknown until
 the coding host compares actual files: run
 `sh SKILL_DIR/scripts/stately-check freshness RESULT_JSON --workspace CURRENT_PROJECT`
