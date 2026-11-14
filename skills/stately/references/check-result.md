@@ -43,14 +43,14 @@ const handoff = exportPstackResult({
   found,
   artifacts, // artifact(role, relativePath, exactContent) for spec/config/view/dependencies
   checker: {
-    name: 'TLC',
+    name: "TLC",
     version: actualTlcVersion,
     command: actualCommand,
     bounds: actualConstantsAndConstraints,
     assumptions: reviewedAssumptions,
   },
 });
-files.set('check-result.json', [JSON.stringify(handoff, null, 2)]);
+files.set("check-result.json", [JSON.stringify(handoff, null, 2)]);
 ```
 
 This is an optional upstream seam, not a patched or forked `/statechart`.

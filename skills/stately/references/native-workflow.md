@@ -5,7 +5,7 @@ host dependent. If the connection is unavailable, retain the native model and
 explain how to connect; do not fabricate saves or links. Local source is read
 by the coding host, never by the hosted Stately connection.
 
-1. Read a saved model with `open_stately_editor({ machineId })`. For new source
+1. Read a saved model quietly with `read_stately_model({ machineId })`. For new source
    estimates, first read `get_stately_flow_guidance({ scope: "flow" })`. Save:
 
    ```js
@@ -14,9 +14,9 @@ by the coding host, never by the hosted Stately connection.
        workingDirectory,
        repositoryUrl,
        revision,
-       sourceSnapshot: { algorithm: 'sha256', files: [{ path, sha256 }] },
+       sourceSnapshot: { algorithm: "sha256", files: [{ path, sha256 }] },
      },
-     machines: [{ name: 'Estimated checkout', graph, evidence }],
+     machines: [{ name: "Estimated checkout", graph, evidence }],
    });
    ```
 
@@ -25,7 +25,8 @@ by the coding host, never by the hosted Stately connection.
    pinned to a commit. Hash exact inspected bytes, including uncommitted edits.
    For requirements without source, omit the source snapshot; identify their
    origin in descriptions and assumptions. Do not invent source citations.
-   Save returns IDs and revisions; reopen to retrieve the native graph.
+   Save returns IDs and revisions; use `read_stately_model` to retrieve the native
+   graph. Open the editor only when the user asks to see the saved result.
 
 2. The user edits the native model and saves a proposal in the editor. For a
    text-directed edit, preserve IDs and submit

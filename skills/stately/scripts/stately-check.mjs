@@ -54,10 +54,18 @@ const isCheckCommand = (command) =>
   command?.endsWith('.tla') ||
   command?.endsWith('.json') ||
   command?.startsWith('-');
-const isNativeCheck = (args) =>
-  args.includes('--rules') ||
-  args.some((arg) => arg.startsWith('--rules=')) ||
-  args.find((arg) => !arg.startsWith('-'))?.endsWith('.json');
+const checkValueOptions = ['rules', 'config', 'view', 'out', 'timeout', 'scope', 'manifest', 'source'];
+export const isNativeCheck = (args) => {
+  const { values, positionals } = parseArgs({
+    args,
+    strict: false,
+    allowPositionals: true,
+    options: Object.fromEntries(
+      checkValueOptions.map((name) => [name, { type: 'string', multiple: true }]),
+    ),
+  });
+  return values.rules !== undefined || positionals[0]?.endsWith('.json') === true;
+};
 
 export async function main(args) {
   const [command, ...paths] =

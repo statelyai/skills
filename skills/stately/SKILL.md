@@ -5,13 +5,14 @@ description: Model a flow as an interactive Stately statechart, check a protocol
 
 # Stately
 
-Three requests cover most uses. Each has its own section below.
+Common requests and their workflows:
 
-| Request                                             | Section                                                       |
-| --------------------------------------------------- | ------------------------------------------------------------- |
-| "model this flow"                                   | [Model a flow](#model-a-flow)                                 |
-| "check that this protocol follows these invariants" | [Check invariants](#check-invariants)                         |
-| "find the implicit state machines in my app"        | [Find implicit state machines](#find-implicit-state-machines) |
+| Request                                                  | Section                                                       |
+| -------------------------------------------------------- | ------------------------------------------------------------- |
+| "model this flow"                                        | [Model a flow](#model-a-flow)                                 |
+| "show me the happy path" or "play through this scenario" | [Present scenarios](#present-scenarios)                       |
+| "check that this protocol follows these invariants"      | [Check invariants](#check-invariants)                         |
+| "find the implicit state machines in my app"             | [Find implicit state machines](#find-implicit-state-machines) |
 
 Rules that apply everywhere: preserve the application's framework, state
 library, and test runner; XState and pstack are never required. Discover the
@@ -26,7 +27,7 @@ connection. Keep the connection that saved or successfully read a model for
 later reads and saves. For a supplied model ID or link with no known connection,
 try `get_stately_machine` through the available Stately connections, read-only,
 before treating `forbidden` or `not found` from one as a final access failure.
-On a connection that can read the model, call `open_stately_editor` for the
+On a connection that can read the model, call `read_stately_model` for the
 canonical graph and editor revision. The resource's `projectVersionId` is not
 that revision. If the read returned a project ID and `get_stately_project` is
 available, prefer a connection with `permissions.canEdit` for that project.
@@ -38,7 +39,9 @@ different model.
 
 Read the relevant source, contracts, and tests first. Then:
 
-1. Call `get_stately_flow_guidance` for the current modeling rules. Trace a
+1. Call `get_stately_flow_guidance` once per task, connection and scope for the
+   modeling rules. Reuse guidance already in context. Fetch again after switching
+   scope or connection, refreshing the tool catalog, or losing it from context. Trace a
    normal and a failure path through their owning source and tests, including
    dependencies that decide a transition. Check event order, side effects,
    and cleanup before drawing the graph.
@@ -48,11 +51,16 @@ Read the relevant source, contracts, and tests first. Then:
    snapshot and physical working directory. Mark each item observed, inferred,
    or assumed. First call `validate_machine` with
    `{ format: "xgraph", machine: graph }` when available, then
-   `visualize_machine` with the same input to inspect its branches when
-   available. Resolve errors and source mismatches before saving. Show the
+   `visualize_machine` with the same input only when the user asks to see
+   the diagram. Resolve errors and source mismatches before saving. Show the
    returned flow outline and link as returned. The hosted connection needs
    sign-in (in Claude Code, run `/mcp` and authenticate `stately`). Viewing a
    saved model also requires sign-in and access to its project.
+   Saving does not open the editor. For an explicit request to see saved models,
+   call `open_stately_editor` afterward with their returned IDs. Background
+   documentation uses `read_stately_model` for graphs and revisions and does not
+   call visualization tools. If quiet reads are unavailable, reuse graph data
+   already in context or report the update pending instead of opening a view.
 3. Without a connection or project, return Mermaid and local artifacts.
 
 For "help me understand this app", onboarding, or keeping app documentation
@@ -70,6 +78,33 @@ accepts a strict finite flat subset; when the TLA+ path is needed for richer
 behavior, author TLA+ directly instead of deleting guards, context, hierarchy,
 or actors.
 
+## Present scenarios
+
+For an existing model, inspect the connected `open_stately_editor` schema for
+`session`. If absent, report the server update and catalog refresh needed. Read the
+model before selecting its event sequence. Choose actual event objects, payloads,
+input, and context from the model and source. Clarify ambiguous outcomes.
+
+- “Show me the happy path” normally means `session.highlights` with a
+  `{ kind: "scenario", scenario: { events: [...] } }` group. Highlight the whole
+  trace. Multiple labeled groups support comparisons, colors, and `showLegend`.
+- “Play through the happy path” normally means `session.simulation` with
+  `{ events: [...] }`. Omit `step` to open at the initial snapshot. An explicit
+  starting step selects that event position; the event count selects the end.
+- Explicit requests for highlighting or simulation override these wording
+  conventions. They are not reserved phrases.
+
+Pass the selected saved `machineId` and `session` to `open_stately_editor`. These
+options are session-only. Highlight groups replace the whole list; `[]` clears it.
+During simulation, normal current-step highlights replace custom annotations.
+Opening a scenario loads its history for user navigation. Do not simulate clicks,
+add an autoplay loop, execute external actors, or wait for timers. Report replay
+diagnostics and the selected step. Ignored events count as steps, but do not prove
+the intended transition occurred.
+
+See [session presentation](https://github.com/statelyai/viz/blob/main/docs/editor/session-presentation.md#ask-for-highlights-or-simulation)
+for concrete MCP calls and the highlight/simulation distinction.
+
 ## Check invariants
 
 For "check/verify this flow", "find state-machine bugs", a supplied `.tla`, or
@@ -82,9 +117,11 @@ mark checking as not run, and provide the command below.
 
 1. Check the saved model, not a parallel file. Select its connection as above,
    then read its graph, revision, and link with
-   `open_stately_editor({ machineId })`. Alternatively, save a new
+   `read_stately_model({ machineId })`. Alternatively, save a new
    estimate with `save_stately_models`, then reopen it for its graph and
-   editor revision. Write that `graph` to `Flow.json` in a task-owned directory
+   editor revision. Reuse a graph already read in this task when unchanged; check
+   freshness with `knownRevision` when needed, and fetch the full graph when it
+   is no longer in context. Write that `graph` to `Flow.json` in a task-owned directory
    unchanged. When there is no saved model or no connection, hand-write
    `Flow.json` as an XState config or XGraph. The rules file `Flow.rules.json` gives bounded context
    domains, guard and action expressions, event payloads, fairness, and the
@@ -171,7 +208,7 @@ not change its access or visibility.
 
 Select the saved model's connection as above. Use
 `get_stately_check_result` for the report and freshness. Read the latest graph,
-editor revision, and link with `open_stately_editor({ machineId })`. Source
+editor revision, and link with `read_stately_model({ machineId })`. Source
 freshness is unknown until
 the coding host compares actual files: run
 `sh SKILL_DIR/scripts/stately-check freshness RESULT_JSON --workspace CURRENT_PROJECT`
