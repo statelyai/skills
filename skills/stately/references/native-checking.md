@@ -80,17 +80,17 @@ stops checking before exploration.
 
 Unknown top-level keys are rejected. Every key except `rules` is optional.
 
-| Key | Value |
-| --- | --- |
-| `context` | Domain per variable: `{ "min": int, "max": int }`, `"bool"`, or a list of values. |
-| `init` | Initial context, as one object or a list of objects. A list gives several initial states. |
-| `guards` | Guard name to boolean expression. |
-| `actions` | Action name to `{ variable: expression }`. Every assigned variable needs a domain. All right-hand sides read the state before the step. |
-| `events` | Event type to `{ "payloads": [ {...}, ... ] }`. Each payload is a separate event. |
-| `fairness` | `"weak"` (default), `"none"`, or `{ "weak": [eventTypes] }`. |
-| `rules` | Non-empty list of rules with unique `id` values. Each rule may carry a `description`. |
-| `bounds` | `maxStates` (default 50000), `timeoutMs` (default 0, which disables the wall-clock cap), and `maxAlwaysSteps` (default 50). |
-| `assumptions` | Strings copied into the report. |
+| Key           | Value                                                                                                                                   |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `context`     | Domain per variable: `{ "min": int, "max": int }`, `"bool"`, or a list of values.                                                       |
+| `init`        | Initial context, as one object or a list of objects. A list gives several initial states.                                               |
+| `guards`      | Guard name to boolean expression.                                                                                                       |
+| `actions`     | Action name to `{ variable: expression }`. Every assigned variable needs a domain. All right-hand sides read the state before the step. |
+| `events`      | Event type to `{ "payloads": [ {...}, ... ] }`. Each payload is a separate event.                                                       |
+| `fairness`    | `"weak"` (default), `"none"`, or `{ "weak": [eventTypes] }`.                                                                            |
+| `rules`       | Non-empty list of rules with unique `id` values. Each rule may carry a `description`.                                                   |
+| `bounds`      | `maxStates` (default 50000), `timeoutMs` (default 0, which disables the wall-clock cap), and `maxAlwaysSteps` (default 50).             |
+| `assumptions` | Strings copied into the report.                                                                                                         |
 
 When exploration stops early at a bound, every rule is `not-checked` and the
 reason is in `checker.bounds.incompleteReason`.
@@ -100,15 +100,15 @@ its domain is kept and checked against every rule, but is not explored further.
 
 ### Rule kinds
 
-| Kind | Fields | Meaning |
-| --- | --- | --- |
-| `never` | `when` | No reachable state satisfies `when`. |
-| `initially` | `then` | Every initial state satisfies `then`. |
-| `eventually` | `then` | Every behavior reaches a state where `then` holds. |
-| `eventually-always` | `then` | Every behavior reaches a point after which `then` always holds. |
-| `leads-to` | `when`, `then` | Every state satisfying `when` is followed by a state satisfying `then`. |
-| `no-dead-ends` | `allowFinal` (default `true`) | Every reachable state has an outgoing step. Final states are allowed unless `allowFinal` is `false`. |
-| `reachable` | `then` | Some reachable state satisfies `then`. |
+| Kind                | Fields                        | Meaning                                                                                              |
+| ------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `never`             | `when`                        | No reachable state satisfies `when`.                                                                 |
+| `initially`         | `then`                        | Every initial state satisfies `then`.                                                                |
+| `eventually`        | `then`                        | Every behavior reaches a state where `then` holds.                                                   |
+| `eventually-always` | `then`                        | Every behavior reaches a point after which `then` always holds.                                      |
+| `leads-to`          | `when`, `then`                | Every state satisfying `when` is followed by a state satisfying `then`.                              |
+| `no-dead-ends`      | `allowFinal` (default `true`) | Every reachable state has an outgoing step. Final states are allowed unless `allowFinal` is `false`. |
+| `reachable`         | `then`                        | Some reachable state satisfies `then`.                                                               |
 
 Rule ids appear in reports as `invariant:Name`, `property:Name`, and
 `deadlock:Name`, the same form the TLA+ path produces.
@@ -127,10 +127,10 @@ Expressions are parsed, never evaluated as code. The grammar has:
 
 ### Fairness
 
-| Value | Behavior | TLC equivalent |
-| --- | --- | --- |
-| `"weak"` | Loops of real steps and dead ends are counterexamples. | `WF_vars(Next)` |
-| `"none"` | The first state without the goal may stutter forever. | Spec without fairness |
+| Value                | Behavior                                                                                  | TLC equivalent                 |
+| -------------------- | ----------------------------------------------------------------------------------------- | ------------------------------ |
+| `"weak"`             | Loops of real steps and dead ends are counterexamples.                                    | `WF_vars(Next)`                |
+| `"none"`             | The first state without the goal may stutter forever.                                     | Spec without fairness          |
 | `{ "weak": ["E1"] }` | A loop that keeps `E1` enabled in every state but never takes it is not a counterexample. | `WF_vars(E1)` per listed event |
 
 Strong fairness is not expressible.
@@ -227,7 +227,9 @@ state forever, either because it is a dead end or because fairness is `"none"`.
     "session": {
       "initial": "signedOut",
       "states": {
-        "signedOut": { "on": { "SUBMIT": [{ "target": "signedIn", "guard": "valid" }, { "actions": "fail" }] } },
+        "signedOut": {
+          "on": { "SUBMIT": [{ "target": "signedIn", "guard": "valid" }, { "actions": "fail" }] }
+        },
         "signedIn": { "on": { "LOGOUT": "signedOut" } }
       }
     },

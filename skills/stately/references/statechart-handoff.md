@@ -7,14 +7,14 @@ historical result does not rerun its checker.
 
 What each existing artifact supports:
 
-| Existing artifact                            | Supported path                                                    |
-| -------------------------------------------- | ----------------------------------------------------------------- |
-| Stately `stately.check-result.v1` JSON       | `graph` builds a native view (below)                              |
-| TLC JSON trace (`-dumpTrace json`, TLC 1.8+) | `import-trace` with explicit provenance                           |
-| TLC DiskGraph DOT (`-dump dot`)              | `import-dot` with explicit provenance; no rule verdict            |
-| Computed pstack CheckResult/Walk/Chart       | `pstack-result.mjs` module adapter (below)                        |
+| Existing artifact                            | Supported path                                                   |
+| -------------------------------------------- | ---------------------------------------------------------------- |
+| Stately `stately.check-result.v1` JSON       | `graph` builds a native view (below)                             |
+| TLC JSON trace (`-dumpTrace json`, TLC 1.8+) | `import-trace` with explicit provenance                          |
+| TLC DiskGraph DOT (`-dump dot`)              | `import-dot` with explicit provenance; no rule verdict           |
+| Computed pstack CheckResult/Walk/Chart       | `pstack-result.mjs` module adapter (below)                       |
 | pstack `chart.mmd` Mermaid chart             | `render` draws an SVG; `visualize_machine` gives a lossy diagram |
-| pstack report text and `tlc.out` logs        | Not parsed; keep them as cited evidence beside any import         |
+| pstack report text and `tlc.out` logs        | Not parsed; keep them as cited evidence beside any import        |
 
 Nothing reads an installed pstack plugin. Each import keeps the supplied files'
 exact text and hashes as provenance.

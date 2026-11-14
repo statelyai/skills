@@ -7,12 +7,12 @@ description: Model a flow as an interactive Stately statechart, check a protocol
 
 Common requests and their workflows:
 
-| Request | Section |
-| --- | --- |
-| "model this flow" | [Model a flow](#model-a-flow) |
-| "show me the happy path" or "play through this scenario" | [Present scenarios](#present-scenarios) |
-| "check that this protocol follows these invariants" | [Check invariants](#check-invariants) |
-| "find the implicit state machines in my app" | [Find implicit state machines](#find-implicit-state-machines) |
+| Request                                                  | Section                                                       |
+| -------------------------------------------------------- | ------------------------------------------------------------- |
+| "model this flow"                                        | [Model a flow](#model-a-flow)                                 |
+| "show me the happy path" or "play through this scenario" | [Present scenarios](#present-scenarios)                       |
+| "check that this protocol follows these invariants"      | [Check invariants](#check-invariants)                         |
+| "find the implicit state machines in my app"             | [Find implicit state machines](#find-implicit-state-machines) |
 
 Rules that apply everywhere: preserve the application's framework, state
 library, and test runner; XState and pstack are never required. Discover the
@@ -153,6 +153,7 @@ mark checking as not run, and provide the command below.
    The first TLA+ run downloads a Java runtime and TLC; see
    [formal-checking.md](references/formal-checking.md) for runtime setup,
    projections, and timeouts.
+
 3. Read `compact-report.md` first, then `report.md`, `check-report.json`, and
    `check-result.json`; full evidence stays authoritative. Treat each rule's
    `holds`, `broken`, or `not-checked` independently. A deadlock result and a
