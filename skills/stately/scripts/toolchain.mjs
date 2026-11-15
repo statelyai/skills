@@ -265,19 +265,23 @@ export async function ensureRenderer({
   return { file, version: PELE_VERSION, sha256: PELE_SHA256 };
 }
 
-export const XSTATE_VERSION = '6.0.0-alpha.65';
+export const XSTATE_VERSION = '6.0.0-beta.2';
 /** The ESM entry and the chunks it imports, from the published package. */
 export const XSTATE_FILES = {
-  'xstate.esm.js':
-    '7ece27cc5e9465d5d070c1394dc4eef4dfebb6be03b6dead4286003d956f58f6',
-  'index-52ad3d45.esm.js':
-    '448f9d5df0eff4a9c0c3b3f8b31b54ddf49b36f12ee0ccab4f230b955d79f21c',
-  'createActor-4629a290.esm.js':
-    '49e5c95884c91c467b028393b9569fd09bf5ee4132e228acd6197fb218951f2c',
+  'createActor-20a97166.esm.js':
+    '98d2f98bd110115a13ae997527f6ca62392dd54dc5b80e05dce12cf67dac3f34',
+  'effectDescriptor-e93df910.esm.js':
+    '89f9c86d6a23db591e72542814771a58577bd7dfc24780476fa55ae02d22116d',
+  'legacySnapshot-9e06feb4.esm.js':
+    '3b2e725ac6f61bf6110265bfc5da645e517ca5dbea3984d327a2449f155d46b2',
   'schema.types-0ecd17b8.esm.js':
     '0367ede5890c4cbdd62fd5c6faac12095328ed252e587c485d2d45ba3ee55f54',
-  'effectDescriptor-973fc1ba.esm.js':
-    '6b4b0e9546f7cabfab977828602411866d3b54f71abf67b985ad6353ee6dec73',
+  'validation-05f1d517.esm.js':
+    'a271f1d7426253f29cf32004ba2bd5232e85258c2acc9ef408f83198953b53cd',
+  'xstate-actors.esm.js':
+    'e193931de8d7518695269cfafdc8a2e34e73f27a4a16f90c9acef1dbed7cb310',
+  'xstate.esm.js':
+    'd0b125517efe4c5aad8e5d965f028eb1f15d48ec171fe489be7ff7d6f46dea40',
 };
 
 /**
