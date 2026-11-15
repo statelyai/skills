@@ -27,8 +27,8 @@ Options:
   never shared.
 - `--compact`: without `--json`, print the concise report to stdout.
 
-The first run downloads XState 6.0.0-alpha.65 (about 0.4 MB, checksum-verified)
-into the Stately cache. Later runs reuse it.
+The first run downloads XState 6.0.0-beta.2 into the Stately cache and verifies
+its checksums. Later runs reuse it.
 
 ## Model input
 

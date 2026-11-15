@@ -620,7 +620,7 @@ export function nativeCheckExitCode(result) {
 // ---------------------------------------------------------------------------
 
 function loadXState() {
-  // The spike resolves the v6 alpha through graph-tools (repo checkout) or a plain
+  // The spike resolves the v6 beta through graph-tools (repo checkout) or a plain
   // `xstate` install next to the skill; a packaged skill would bundle it.
   // The repo path is assembled at runtime so bundlers (Turbopack, webpack) do not try to
   // resolve it statically; hosted builds pass `xstate` in and never reach this.
@@ -675,7 +675,7 @@ class Engine {
     this.native = new Map([...this.xid].map(([id, xid]) => [xid, id]));
     this.current = null; // the pre-step configuration, for in() inside guards and actions
     this.collector = null; // { unresolved: boolean, wanted: Set<guardName> }
-    this.machine = this.xstate.createMachine(this.stateConfig(model.root, true));
+    this.machine = this.xstate.createMachine({ ...this.stateConfig(model.root, true), options: { maxIterations: rules.bounds.maxAlwaysSteps } });
   }
   scope(configuration, context, event) {
     const active = activeSet(this.model, configuration);
@@ -756,8 +756,8 @@ class Engine {
     if (root) config.context = ({ input }) => input;
     if (node.type === 'parallel') config.type = 'parallel';
     if (node.type === 'final') config.type = 'final';
-    if (node.type === 'compound') config.initial = this.model.nodes.get(node.initialId).key;
-    if (node.children.length) config.states = Object.fromEntries(node.children.map((child) => [child.key, this.stateConfig(child)]));
+    if (node.type === 'compound') config.initial = this.xid.get(node.initialId);
+    if (node.children.length) config.states = Object.fromEntries(node.children.map((child) => [this.xid.get(child.id), this.stateConfig(child)]));
     if (node.entry.length)
       config.entry = ({ context, event }) => {
         const next = this.applyActions(node.entry, context, event, node.id);
