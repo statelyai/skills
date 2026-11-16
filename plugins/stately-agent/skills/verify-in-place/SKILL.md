@@ -5,7 +5,7 @@ description: Verify existing agent code without changing it. Write a model of it
 
 # Verify existing code in place
 
-> Targets `@statelyai/agent` 2.0 alpha, as on the [`next` branch](https://github.com/statelyai/agent/tree/next). Needs a version whose `@statelyai/agent/testing` exports `checkConformance` (check the import, not the version number). APIs change between alphas: when a call here does not match the installed package, check `node_modules/@statelyai/agent/CHANGELOG.md`.
+> Targets `@statelyai/agent` 2.0 alpha, as on the [`next` branch](https://github.com/statelyai/agent/tree/next). Needs a version whose `@statelyai/agent/testing` exports `checkConformance` and `recordAiSdk` (check the imports, not the version number). APIs change between alphas: when a call here does not match the installed package, check `node_modules/@statelyai/agent/CHANGELOG.md`.
 
 You leave the code alone and build evidence about it: a model of its control flow, proofs of the model's rules, and a check that recorded runs of the code conform to the model.
 
@@ -34,23 +34,25 @@ The check records the code's side effects without editing it.
 | It builds an AI SDK model inline, or passes module-level tools to `generateText` | The AI SDK recipe below |
 | Other side effects are module imports with no injection point | Module mocks in the test (`vi.mock`) that wrap the real functions with `recorder.fn` |
 
-**AI SDK code.** Mock the provider so it returns the recorded stand-in, and mock `generateText` so its tools go through `recorder.tools`. Everything else in `ai` stays real, so the code's own tool loop runs:
+**AI SDK code.** Mock `"ai"` with `recordAiSdk`: each `generateText` and `streamText` call runs on the real AI SDK with the seam's model in place of the code's, and its tools wrapped with `recorder.tools`. The code's own tool loop runs, and the provider needs no mock:
 
 ```ts
-vi.mock("@ai-sdk/openai", async () => {
-  const { currentModel } = await import("./seam"); // recorder.model(new MockLanguageModelV3(...))
-  return { openai: () => currentModel() };
-});
+// seam.ts: current = { recorder, model: recorder.model(new MockLanguageModelV3(...)) } per scenario
+export const currentSeam = () => current;
+
+// the test
 vi.mock("ai", async (importOriginal) => {
   const ai = await importOriginal<typeof import("ai")>();
-  const { wrapTools } = await import("./seam"); // recorder.tools(tools)
-  return { ...ai, generateText: (options) => ai.generateText({ ...options, tools: options.tools && wrapTools(options.tools) }) };
+  const { recordAiSdk } = await import("@statelyai/agent/testing");
+  const { currentSeam } = await import("./seam");
+  return { ...ai, ...recordAiSdk(ai, currentSeam) };
 });
 ```
 
 - The seam module must not import `"ai"`, or the mock deadlocks. Import error classes from `@ai-sdk/provider`.
+- A call while `currentSeam()` returns `undefined` throws, so no test reaches a real provider.
 - A tool with `execute` runs inside the `generateText` call, before the loop sees the result. Read the loop with that order, not line by line: a check the loop makes after `generateText` returns comes after the tool already ran.
-- `recorder.model` records each provider attempt. With the SDK's default retries, one `generateText` call can record several `model` effects. Stand-ins that throw retryable errors need the mapping to fold failed attempts into the call that follows.
+- `recorder.model` records each provider attempt. A failed attempt the SDK retried has `retriedBy`: skip it in the mapping, and count the code's calls yourself, because `effect.call` counts attempts.
 
 If none of these reach a side effect, the only edit allowed is extracting a seam (an `effects` object passed in). Ask the user before making it, and change nothing else.
 
@@ -89,18 +91,20 @@ For each rule, a `canReach` test with `reachable: false` **and** `complete: true
 
 ## 5. Record runs
 
-Write scenarios that drive the code with scripted stand-ins: one per rule, each boundary, each exit (replied, refunded, declined, escalated, errors). Record each with `createRecorder` through the seam. Run the code as it is. Save recordings as JSON fixtures when the stand-ins are slow or nondeterministic.
+Write scenarios that drive the code with scripted stand-ins: one per rule, each boundary, each exit (replied, refunded, declined, escalated, errors). Record each with `createRecorder` through the seam, and record the return value with `recorder.output(await run(...))`. Run the code as it is. Save recordings as JSON fixtures when the stand-ins are slow or nondeterministic.
 
 ## 6. Map recorded calls to observations
 
-Each recorder produces its own effect kind: `recorder.fn` and `recorder.client` give `kind: "call"` (`name`, `args`, `result`), `recorder.model` gives `kind: "model"` (`request`, `response`, `error`), and `recorder.tools` gives `kind: "tool"` (`name`, `input`, `output`). Map every kind your seam records. In a `model` effect, `response.content` is the provider's raw output: a tool call's `input` is a JSON string to parse.
+Each recorder produces its own effect kind: `recorder.fn` and `recorder.client` give `kind: "call"` (`name`, `args`, `result`), `recorder.model` gives `kind: "model"` (`request`, `response`, `error`, `retriedBy`), `recorder.tools` gives `kind: "tool"` (`name`, `input`, `output`), and `recorder.output` gives `kind: "output"` (`value`). Map every kind your seam records. In a `model` effect, `response.content` is the provider's raw output: a tool call's `input` is a JSON string to parse.
 
 ```ts
 const toObservations = (recording: Recording) =>
   recording.effects.flatMap((effect): Observation[] => {
+    if (effect.kind === "output") return [{ kind: "returned", outcome: effect.value }];
     if (effect.kind !== "call") return []; // add cases for "model" and "tool" when the seam records them
     switch (effect.name) {
       case "decide": return [{ kind: "decision", decision: effect.result as Decision }];
+      case "requestApproval": return [{ kind: "approval", approved: effect.result as boolean, amount: (effect.args as [{ amount: number }])[0].amount }];
       case "issueRefund": return [{ kind: "refund", ...(effect.args as [{ orderId: string; amount: number }])[0] }];
       default: return [];
     }
@@ -124,7 +128,13 @@ const report = await checkConformance(refundModel, {
     },
     save: {}, // the recording cannot see it
   },
-  events: { approval: (o) => ({ type: o.approved ? "APPROVE" : "REJECT" }) },
+  events: {
+    approval: {
+      event: (o) => ({ type: o.approved ? "APPROVE" : "REJECT" }),
+      matches: ({ observation, context }) => observation.amount === context.amount,
+    },
+  },
+  output: { observes: "returned", matches: ({ output, observation }) => output.outcome === observation.outcome },
 });
 expect(report.deviation).toBeUndefined();
 ```
@@ -135,7 +145,8 @@ expect(report.deviation).toBeUndefined();
 - `error` returns a value to fail the actor, for calls that threw in the recording.
 - A deviation means the code or the model is wrong. Report it with `reason`, `expected`, `observed`, and `state`. Do not change the model to make a run conform without asking: the code may have the bug.
 - Once you have confirmed a deviation is a finding about the code, keep the suite green by pinning it: the scenario's test asserts that exact deviation (`reason`, `state`, observed kind), with a comment that names the bug and says to remove the pin when the code is fixed. Never delete the scenario.
-- An event has no `matches`, so an event's payload (the draft a person approved) is not compared. Compare it through the next actor's `matches`, or list it as unchecked in the hand-back.
+- An event entry `{ event, matches }` compares the observation with the model's `context` and `state`: the draft a person approved against the draft the model holds. A function entry compares nothing; list its payload as unchecked in the hand-back.
+- `output` checks the code's return value: the model must finish there, and `matches` compares the outputs. Pass it for every run that returned; leave it out for a run where the code threw. Without it, a recorded return value is an `extra-observations` deviation.
 
 ## 8. Coverage
 
@@ -149,7 +160,7 @@ Prove the check catches a real regression: copy the code to a throwaway file, in
 
 - Files added: the model, proofs, scenarios, mapping, and conformance test. The code under check is unchanged (`git diff` on it is empty).
 - A table: each rule, proved or not (with depth), and how many recorded runs exercised it.
-- Unobserved actors, other unchecked values (event payloads, arguments no `matches` compares), and coverage gaps, with what would close them.
+- Unobserved actors, other unchecked values (event payloads and return values no `matches` compares, arguments no `matches` compares), and coverage gaps, with what would close them.
 - Findings: each pinned deviation, the bug it shows in the code, and the scenarios that show it.
 - The bite check: the bug, the scenario that caught it, and the deviation.
 - The claim, in these words: the model is proved, and these recorded runs conform. When some runs deviate: the model is proved; N of M recorded runs conform; each other run deviates at the step named, with the finding it shows.
