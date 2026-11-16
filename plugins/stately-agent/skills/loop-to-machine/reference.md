@@ -74,7 +74,7 @@ const prepare = createAsyncLogic<Prepared, ToolCall>({
 What the extract leaves:
 
 - **A loop head in the middle of a method.** When the `while` sits between setup and a `try`/`catch`/`finally`, extracting the body is not enough: the carve still has to replace the head inside the method. Extract the loop as well (`_runLoop(state)` calling `_cycle(state)`), so the carve overrides one method and copies nothing.
-- **A head that reads private fields.** A subclass cannot reach TypeScript `private` members by type. Use one typed cast in the port (`interface AgentInternals { _meter: Meter }`), or return what the head reads from the extracted pass. A JavaScript `#private` field is unreachable: the extracted method has to return it.
+- **A head that reads private fields.** A subclass cannot reach TypeScript `private` members by type. Use one typed cast in the port (`interface AgentInternals { _meter: Meter }`). A JavaScript `#private` field is unreachable from outside: give the extracted loop a reader for it (`readUsage: () => this.#meter.usage`), so the head sees the live value, including before the first pass.
 - **An actor built outside the class.** It cannot call a `protected` method. Pass a callback that calls it into the actor, or make the extracted method public `@internal`.
 - **Host flags read mid-pass.** An extracted pass that still checks `this.isStopped` or `signal.aborted` before each step keeps stop and abort wired twice: the host sets the old flag for the pass and sends the event to the machine. That lasts until the pass itself becomes states. A later step passes a per-run flag reader into the extracted method, which the machine controls.
 
@@ -116,7 +116,7 @@ beforeAll(async () => {
 });
 ```
 
-The canary for a setup-file swap counts per test file, since one setup file serves every file. Guard the swap with `if (process.env.STATELY_SWAP !== "0")`. Run the suite once on the legacy code with a counting pass-through, pin the counts, then assert the port makes the same number of runs in each file:
+The canary for a setup-file swap counts per test file, since one setup file serves every file. Guard the swap with `if (process.env.STATELY_SWAP !== "0")`. Run the suite once on the legacy code with a counting pass-through and `fileParallelism: false`, so the files' writes to `canary.json` do not race, pin the counts, then assert the port makes the same number of runs in each file:
 
 ```ts
 // old-suite.setup.ts, after the swap above, which it skips when STATELY_SWAP=0.
