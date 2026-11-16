@@ -17,6 +17,7 @@ The `stately-agent` plugin holds skills for [`@statelyai/agent`](https://github.
 | Step | Skill | What it does |
 | --- | --- | --- |
 | Route | [graph-engineering](plugins/stately-agent/skills/graph-engineering/SKILL.md) | Finds which step a project is at and loads the next skill |
+| 0. Verify in place | [verify-in-place](plugins/stately-agent/skills/verify-in-place/SKILL.md) | Models existing code, proves the model's rules, and checks recorded runs of the unchanged code with `checkConformance` |
 | 1. Make it a machine | [loop-to-machine](plugins/stately-agent/skills/loop-to-machine/SKILL.md) | Converts existing agent code into a machine and checks parity with `compareRuns` |
 | 1. Make it a machine | [build-machine](plugins/stately-agent/skills/build-machine/SKILL.md) | Builds a TypeScript machine from a spec and proves its invariants |
 | 1. Make it a machine | [generate-machine](plugins/stately-agent/skills/generate-machine/SKILL.md) | Authors a JSON policy machine and runs `verifyAgentConfig` |
