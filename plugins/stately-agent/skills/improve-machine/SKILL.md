@@ -41,7 +41,7 @@ The rounds are the same for both formats. What differs is what the diff may touc
 **No policy yet.** `loop-to-machine` leaves a single model decision inside the environment when the old code had no policy logic. Then:
 
 - Record `v0` in a new `CHANGELOG.md` next to the environment (in a `policy/` directory): "the model decides directly". This entry goes in the working tree.
-- The first recommended candidate introduces the policy as `v1`: a policy file that reproduces the current behavior (it passes the environment's prompt and facts through to the model) plus the one rule the diagnosis found, and the routing line in the runner (`withPolicy(modelExecutors)`). The policy runs as the decider through `createPolicyDecider` from `@statelyai/agent`; the pattern is in `../loop-to-machine/policy.md`.
+- The first recommended candidate introduces the policy as `v1`: a policy file that reproduces the current behavior (it passes the environment's prompt and facts through to the model) plus the one rule the diagnosis found, and the routing line in the runner (`withPolicy(modelExecutors)`). The policy runs as the decider through `createPolicyDecider` from `@statelyai/agent/policy`; the pattern is in `../loop-to-machine/policy.md`.
 - Its `description` is the environment's goal with measurable success criteria. If the environment's goal has none, draft them from the confirmed objective and list the draft under questions for the user.
 - If the policy needs a fact the environment does not pass in the decision's `metadata.facts`, that is an environment change request.
 
@@ -138,7 +138,7 @@ for (const threadId of threadIds) {
 - `store.read(threadId)` returns a thread's entries in log order.
 - `replay(machine, entries)` needs the machine, at the version, that recorded the thread. Here that is the environment: its runtime records every thread, and the policy runs only as a decider at its boundary, so never replay with the policy machine. A thread recorded by a different environment version throws `AgentMachineVersionMismatchError`. Score each thread with the version that recorded it.
 - `getDecisionAttempts(entries)` returns `{ index, eventType, attempts }` for each entry whose decision needed retries: the failed tries before the event landed, or every try of an exhausted decision (`eventType` is then `xstate.error.actor.*`). Each attempt has `failure` (`unknown-event`, `invalid-payload`, or `rejected-by-guard`), `reason`, and the attempted `event` when there was one. A first-try decision records nothing.
-- `agent.decide` invokes journal their attempts on their own. With `decideNext` at the boundary, the host must pass them with the event, `runToQuiescence(runtime, { event, attempts })` or `runtime.transition(state, event, { attempts })`, or they never reach the log.
+- `agent.decide` invokes journal their attempts on their own. With `decideNext` at the boundary, the host must pass them with the event, `runAgent(machine, { snapshot, event, attempts })` or `runtime.transition(state, event, { attempts })`, or they never reach the log.
 - Compute the objective over the rows. This is the baseline for the round.
 
 ## 3. Diagnose
