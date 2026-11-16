@@ -213,17 +213,50 @@ export function removedProtections(path, removedLines) {
 const DETACHED =
   /^\s*(?:void\s+)?(?:this\.|self\.)?[\w.$]+(?:\([^;]*\))?\s*\.then\(|^\s*void\s+[\w.$]+\(|^\s*go\s+(?:func\b|[\w.]+\()|\b(?:tokio::spawn|thread::spawn|asyncio\.create_task|asyncio\.ensure_future|loop\.create_task|threading\.Thread|executor\.submit|queueMicrotask|setImmediate)\s*\(|^\s*set(?:Timeout|Interval)\s*\(/;
 
+const JS_LIKE = /\.(m?[jt]sx?|cjs|cts|mts|vue|svelte)$/i;
+
 /** Work started without awaiting it, and awaits the change removed. */
 export function detachedWork(path, added, removed) {
   const leads = added
     .filter(({ text }) => DETACHED.test(text))
     .map(({ line, text }) => ({ path, line, text: text.trim(), note: 'starts work that nothing awaits; check what it writes after the caller moves on' }));
-  const addedTexts = added.map(({ text }) => text.replace(/\s+/g, ''));
+  const addedTexts = added.map(({ text }) => text.trim());
+  // Drops whitespace but keeps `await ` so it stays a separate word.
+  const compact = (text) =>
+    text.replace(/\bawait\s+/g, '\u0000').replace(/\s+/g, '').replace(/\u0000/g, 'await ');
   for (const { line, text } of removed) {
     const match = /\bawait\s+([\w.$]+\s*\()/.exec(text);
     if (!match) continue;
     const call = match[1].replace(/\s+/g, '');
-    const index = addedTexts.findIndex((candidate) => candidate.includes(call) && !candidate.includes(`await${call}`));
+    // Still awaited when the call runs inside a callback that an earlier
+    // `await` on the same expression receives (`await measure('x', () =>
+    // call())`), or, in JS and TS, when it is returned to an awaiting caller.
+    // An await inside the call's own arguments does not count.
+    const returnsAwait = JS_LIKE.test(path);
+    const wrapped = (text, callAt) => {
+      const before = text.slice(0, callAt);
+      if (/\bawait $/.test(before)) return true;
+      const awaitAt = before.search(/\bawait\b/);
+      return awaitAt >= 0 && before.slice(awaitAt).includes('=>');
+    };
+    const awaited = (index) => {
+      const own = compact(addedTexts[index]);
+      const callAt = own.indexOf(call);
+      if (wrapped(own, callAt)) return true;
+      if (returnsAwait && /^return\b/.test(addedTexts[index])) return true;
+      // A wrapper opened above: every line between it and the call must leave
+      // the expression open (end in `=>`, `(`, or `,`).
+      for (let back = 1; back <= 2 && index - back >= 0; back++) {
+        if (added[index - back].line !== added[index].line - back) break;
+        const above = compact(addedTexts[index - back]);
+        if (!/(?:=>|\(|,)$/.test(above)) break;
+        if (wrapped(above, above.length)) return true;
+      }
+      return false;
+    };
+    const index = addedTexts.findIndex(
+      (candidate, at) => compact(candidate).includes(call) && !awaited(at),
+    );
     if (index >= 0)
       leads.push({
         path,
