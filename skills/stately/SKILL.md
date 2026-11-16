@@ -1,6 +1,6 @@
 ---
 name: stately
-description: Model a flow as an interactive Stately statechart, check a protocol or flow against invariants with a bundled native statechart checker (TLA+ optional), and find implicit state machines in application code. Use for /stately, statechart or protocol analysis, safety/liveness/deadlock checks, counterexample replay, hidden-state discovery, app behavior documentation, and visual behavior proposals in any framework.
+description: Model a flow as an interactive Stately statechart, check a protocol or flow against invariants with a bundled native statechart checker (TLA+ optional), find implicit state machines in application code, and review a diff or pull request for state bugs. Use for /stately, statechart or protocol analysis, safety/liveness/deadlock checks, counterexample replay, hidden-state discovery, state-bug review of a change, app behavior documentation, and visual behavior proposals in any framework.
 ---
 
 # Stately
@@ -13,6 +13,7 @@ Common requests and their workflows:
 | "show me the happy path" or "play through this scenario" | [Present scenarios](#present-scenarios) |
 | "check that this protocol follows these invariants" | [Check invariants](#check-invariants) |
 | "find the implicit state machines in my app" | [Find implicit state machines](#find-implicit-state-machines) |
+| "review this PR for state bugs" | [Review a change for state bugs](#review-a-change-for-state-bugs) |
 
 Rules that apply everywhere: preserve the application's framework, state
 library, and test runner; XState and pstack are never required. Discover the
@@ -250,6 +251,20 @@ For visual review, save source-linked candidates as estimated models with
 `save_stately_models` or `create_stately_model`; use `save_stately_check_result`
 only for a real checker result. `extract_machines_from_code` parses explicit
 XState definitions and is not an implicit-machine finder.
+
+## Review a change for state bugs
+
+For a diff, branch, commit range, or pull request, follow
+[state-review.md](references/state-review.md). Run
+`node SKILL_DIR/scripts/state-leads.mjs --base BASE --head HEAD` for the lead
+list, the writer and reader lookup, and the recommended profile (none, single
+pass, or thorough), check every lead against each kind in
+[state-bugs.md](references/state-bugs.md), close every lead in the ledger,
+and re-trace each finding before reporting it. Report only state bugs the
+change introduces or makes reachable, each with its state, event, numbered
+`path:line` sequence, acting line, consequence, and a test sketch, plus a
+bug path diagram for the most consequential ones. Ask before posting review
+comments.
 
 ## Pairing and imports
 

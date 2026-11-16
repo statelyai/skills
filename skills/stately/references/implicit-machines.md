@@ -6,6 +6,9 @@ events are encoded indirectly. A single boolean can be enough; a collection of
 flags is not automatically one machine. The test is whether an event's valid
 outcome depends on a persistent phase or combination of values.
 
+For a diff, branch, or pull request, follow [state-review.md](state-review.md)
+instead; it reviews only what the change touches.
+
 ## Trace candidates
 
 1. Bound the search: repository, product surface, entry points, and excluded
@@ -23,11 +26,13 @@ outcome depends on a persistent phase or combination of values.
    behavior is inferred. Separate independently changing concerns into regions
    or separate machines instead of multiplying unrelated booleans into a false
    Cartesian product.
-3. Look for concrete risks: contradictory flags, an event accepted in the wrong
-   phase, duplicate or stale async completion, missing cleanup, unreachable
-   recovery, persistence that restores an impossible combination, or a UI that
-   disagrees with backend state. Frame each as a question or candidate rule
-   until checked against intended behavior and replayed in code.
+3. Check each candidate against the kinds in
+   [state-bugs.md](state-bugs.md#kinds) and run its parity checks from
+   [Find absences](state-bugs.md#find-absences): every exit of a handler that
+   sets a busy value, every sibling writer of the same value, every new case.
+   Frame each risk as a question or candidate rule until it has the evidence
+   in [Evidence for a finding](state-bugs.md#evidence-for-a-finding) and has
+   been re-traced in code.
 4. Rank as described in [Rank candidates](#rank-candidates). Trace the top
    candidate through its owning code and related tests before stopping. If
    the user asks for bugs or verification, run one bounded check and attempt
@@ -86,6 +91,10 @@ Signals that mark state, beyond status enums and booleans:
   starts or ends.
 - Phase or status literals compared in presentation code (labels, colors,
   CSS classes, badges) apart from the code that owns the phase.
+- Error handlers that only log, swallow, return a default, or hold a TODO
+  after a state write, and error branches that differ between siblings.
+- Paired operations (`inc`/`dec`, `add`/`remove`, acquire/release,
+  subscribe/unsubscribe) whose two sides sit on different paths.
 
 ## Rank candidates
 
@@ -114,6 +123,11 @@ Then score each candidate on what the source shows:
 3. **Async exposure.** Awaits, callbacks, timers, or retries between reading
    the phase and acting on it, and start, stop, or dispose paths that can
    interleave.
+   Count error paths here too: a `catch` or error callback that runs after
+   the phase is set and does not restore it, or that only logs. Most severe
+   failures in distributed systems start as a non-fatal error that was
+   signalled and then mishandled, so an error path that leaves partial state
+   ranks above an extra happy-path await.
 4. **Consequence.** Lost or unsaved data, a duplicated effect, a leaked
    process or handle, or work attributed to the wrong owner outranks a
    stale label.
@@ -156,7 +170,11 @@ a Markdown file in a task-owned directory and name the path in the answer.
 ## Hand off one candidate
 
 Provide a small table with **candidate**, **source evidence**, **observed
-states/events**, **possible invalid state or transition**, and **confidence**.
+states/events**, **possible invalid state or transition**, **kind** (from
+[state-bugs.md](state-bugs.md#kinds)), and **confidence**. A possible bug that
+has the full evidence (state, event, numbered sequence with `path:line`,
+acting line, consequence) and survived a re-trace is a finding; anything less
+stays a question.
 For the selected candidate, supply a readable statechart and source map.
 Use the application's language for labels. Mark a source-derived chart as
 **estimated from source** even when its separate formal check passes. Prefer
