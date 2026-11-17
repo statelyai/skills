@@ -13,7 +13,8 @@ says where to find them, what to read first, and how to verify the result.
 
 1. Read the importing workspace's `package.json` and lockfile. In a monorepo,
    each workspace can resolve a different `xstate`.
-   - `xstate` 5.x: stop and use the xstate-v5 skill.
+   - `xstate` 5.x: use the xstate-v5 skill, unless the user asked to migrate
+     to v6. Then go to [Migrate from v5](#migrate-from-v5).
    - `xstate` 6.x: continue.
    - No `xstate`: ask before adding it. v6 is in beta (npm `latest` is still
      5.x); say so when you propose it.
@@ -31,7 +32,7 @@ When the package is not installed and you may not install it, download the
 tarball to a temporary directory and read its `docs/` folder there:
 
 ```sh
-mkdir -p "$TMPDIR/xstate-docs" && cd "$TMPDIR/xstate-docs" && npm pack xstate@beta && tar xzf xstate-*.tgz
+dir=$(mktemp -d) && cd "$dir" && npm pack xstate@beta && tar xzf xstate-*.tgz
 ```
 
 Say which version you read when it is not the one the project will install.
