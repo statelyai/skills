@@ -15,15 +15,15 @@ Stately Skills are Claude skills for keeping your code, docs, and diagrams in sy
 
 The `stately-agent` plugin holds skills for [`@statelyai/agent`](https://github.com/statelyai/agent) 2.0 alpha. Run the steps in order: each needs the one before it.
 
-| Step | Skill | What it does |
-| --- | --- | --- |
-| Route | [graph-engineering](plugins/stately-agent/skills/graph-engineering/SKILL.md) | Finds which step a project is at and loads the next skill |
-| 1. Make it a machine | [loop-to-machine](plugins/stately-agent/skills/loop-to-machine/SKILL.md) | Converts existing agent code into a machine and checks parity with `compareRuns` |
-| 1. Make it a machine | [build-machine](plugins/stately-agent/skills/build-machine/SKILL.md) | Builds a TypeScript machine from a spec and proves its invariants |
-| 1. Make it a machine | [generate-machine](plugins/stately-agent/skills/generate-machine/SKILL.md) | Authors a JSON policy machine and runs `verifyAgentConfig` |
-| 2. Add traces | [add-traces](plugins/stately-agent/skills/add-traces/SKILL.md) | Stamps and persists every run so it replays |
-| 3. Add evals | [add-evals](plugins/stately-agent/skills/add-evals/SKILL.md) | Writes evals per state, at the cheapest level that catches the failure |
-| 4. Improve (experimental) | [improve-machine](plugins/stately-agent/skills/improve-machine/SKILL.md) | Improves a policy from traces; a person reviews the pull request |
+| Step                      | Skill                                                                        | What it does                                                                     |
+| ------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Route                     | [graph-engineering](plugins/stately-agent/skills/graph-engineering/SKILL.md) | Finds which step a project is at and loads the next skill                        |
+| 1. Make it a machine      | [loop-to-machine](plugins/stately-agent/skills/loop-to-machine/SKILL.md)     | Converts existing agent code into a machine and checks parity with `compareRuns` |
+| 1. Make it a machine      | [build-machine](plugins/stately-agent/skills/build-machine/SKILL.md)         | Builds a TypeScript machine from a spec and proves its invariants                |
+| 1. Make it a machine      | [generate-machine](plugins/stately-agent/skills/generate-machine/SKILL.md)   | Authors a JSON policy machine and runs `verifyAgentConfig`                       |
+| 2. Add traces             | [add-traces](plugins/stately-agent/skills/add-traces/SKILL.md)               | Stamps and persists every run so it replays                                      |
+| 3. Add evals              | [add-evals](plugins/stately-agent/skills/add-evals/SKILL.md)                 | Writes evals per state, at the cheapest level that catches the failure           |
+| 4. Improve (experimental) | [improve-machine](plugins/stately-agent/skills/improve-machine/SKILL.md)     | Improves a policy from traces; a person reviews the pull request                 |
 
 The skills track the `@statelyai/agent` [`next` branch](https://github.com/statelyai/agent/tree/next). APIs change between alphas, so check the package's `CHANGELOG.md` when a call does not match.
 
