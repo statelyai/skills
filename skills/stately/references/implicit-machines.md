@@ -161,11 +161,26 @@ inventory file. Do not drop a returned link to shorten the answer, and do
 not visualize more candidates than will be linked. Send the
 complete model: keep guards, effects, and failure paths. Do not shrink or
 split a model to obtain a link or an image. If a link or image is missing
-from a result, say so for that candidate and keep the full model as Mermaid.
+from a result, say so for that candidate and give its full model as an XState
+v6 config the user can import into Stately.
 
-When the host can write files and the table has more than about 20 rows,
-also write the complete inventory (every row, its evidence, and its link) to
-a Markdown file in a task-owned directory and name the path in the answer.
+## Keep the inventory
+
+When the host can write files, write one inventory document per sweep in a
+task-owned directory and name its path in the answer. It holds the ranked
+table and, for each candidate, its link and:
+
+- **States** in the product's words, and the values that encode them.
+- **Transitions** as a table: state, event, guard, next state, effects, and the
+  `path:line` that decides it.
+- **Rules** the candidate must keep, stated apart from what the code does.
+- **Reachable invalid states**, including those reached by retries, duplicate
+  or late events, and concurrent callers.
+
+On a later sweep, update the same document in place. Mark rows whose source
+is gone as `possibly removed` instead of deleting them, and add new rows. When
+fixes are proposed, group them into issues by shared owner and shared fix, one
+issue per group, and ask before filing any issue.
 
 ## Hand off one candidate
 
@@ -177,9 +192,9 @@ acting line, consequence) and survived a re-trace is a finding; anything less
 stays a question.
 For the selected candidate, supply a readable statechart and source map.
 Use the application's language for labels. Mark a source-derived chart as
-**estimated from source** even when its separate formal check passes. Prefer
-an interactive Stately model when connected; Mermaid remains the portable
-fallback. Do not erase guards, effects, hierarchy, or concurrent regions to
+**estimated from source** even when its separate formal check passes. Show it
+as a Stately model when connected, and as an importable XState v6 config
+otherwise. Do not erase guards, effects, hierarchy, or concurrent regions to
 make the picture simpler without naming that omission.
 
 If the user asks for bugs or verification, establish what must always hold and
@@ -189,8 +204,72 @@ with [model-authoring.md](model-authoring.md) and the skill's owned checker.
 Report each broken rule with its shortest path, model bounds, and a real test or
 reproduction result. A model counterexample is not yet an application bug.
 
-If the user asks to make a machine explicit, propose the smallest source change
-that makes states and transitions clear in the existing framework. A union,
-reducer, statechart, or actor may fit; XState is optional. Preserve external
-behavior unless the user authorizes a change. Recheck the model and run the
-application's existing tests after implementation.
+## Make a machine explicit
+
+Report the findings first and change code only when the user asks. Make one
+candidate explicit per change, in rank order, and preserve external behavior
+unless the user authorizes a change.
+
+1. **Tests first.** Write characterization tests that drive the candidate's
+   real entry points and assert what a user or caller observes today. Add one
+   regression test per confirmed finding; it fails before the change.
+2. **Pick the library.** Use XState v6 (`xstate@6` beta, pinned to the version
+   the native checker uses). Use `createFSM` from `xstate/fsm` for a flat
+   machine with no hierarchy, parallel regions, or actors, and `setup` or
+   `createMachine` from `xstate` otherwise. In v6, every transition is an
+   object, as in `on: { GO: { target: 'done' } }`; bare string targets are not
+   allowed. When the project already depends on XState v5, write a v5 machine
+   instead, following the `xstate-v5` skill when it is installed. When the
+   project uses another state library (Redux, Zustand, Pinia, MobX), propose
+   XState v6 and ask before switching. Write plain TypeScript (a discriminated
+   union and a transition function) only when the user asks. State in the
+   change summary that `xstate@6` is a beta.
+3. **Replace, do not wrap.** Move every state-bearing value of the candidate
+   into the machine, then delete the replaced flags, status fields, and
+   derived copies. Keep data that is not phase in context.
+4. **Check the real machine.** Write the machine's own config
+   (`machine.config`) to `Flow.json` and run
+   [Check invariants](../SKILL.md#check-invariants) with the same rules. The
+   native checker runs XState v6 semantics, so states and transitions come
+   from the code, not from an estimate, and
+   [Check a fix](../SKILL.md#check-a-fix) runs on the real machine. Guard and
+   action behavior still comes from the rules file; cite each implementation's
+   `path:line`. Save the machine to Stately.
+5. **Run the whole suite**, then the characterization and regression tests
+   again.
+
+```ts
+// xstate-version: 6
+import { createFSM } from 'xstate/fsm';
+
+// Replaces `isUploading` and the early return that left it set.
+export const uploadMachine = createFSM({
+  id: 'upload',
+  initial: 'idle',
+  states: {
+    idle: { on: { PICK: { target: 'uploading' } } },
+    uploading: {
+      on: {
+        UPLOADED: { target: 'idle' },
+        NO_URL: { target: 'failed' },
+      },
+    },
+    failed: { on: { RETRY: { target: 'uploading' } } },
+  },
+});
+```
+
+Not every candidate needs a machine. Leave a two-phase candidate with one
+owner, no async step, and no invalid combination as it is, and say why.
+
+## Prevent new implicit machines
+
+After the first explicit change, offer this snippet for the repository's
+AGENTS.md or CLAUDE.md, and add it only when the user agrees:
+
+```md
+- Model a lifecycle with more than two phases, or any phase that crosses an
+  await, timer, retry, or another owner, as an explicit state machine
+  (XState, matching the version this repository uses). Do not add boolean
+  flags or status strings that encode the same lifecycle.
+```

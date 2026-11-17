@@ -13,6 +13,8 @@ import {
 } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { promisify } from 'node:util';
+import { gunzip } from 'node:zlib';
 
 const exec = (file, args, options = {}) =>
   new Promise((resolve, reject) => {
@@ -54,16 +56,37 @@ const digest = async (file) => {
   for await (const bytes of createReadStream(file)) hash.update(bytes);
   return hash.digest('hex');
 };
-async function download(url, file, checksum, limit = 200_000_000, signal) {
-  if (new URL(url).protocol !== 'https:')
+/** A download that never reached a usable response: a network error or a non-2xx status. */
+class DownloadUnavailable extends Error {}
+const loopback = new Set(['localhost', '127.0.0.1', '[::1]']);
+const timed = (signal, ms) =>
+  signal
+    ? AbortSignal.any([signal, AbortSignal.timeout(ms)])
+    : AbortSignal.timeout(ms);
+async function request(url, signal) {
+  const { protocol, hostname } = new URL(url);
+  // Loopback HTTP serves the fallback tests; every file is checksum-verified either way.
+  if (protocol !== 'https:' && !(protocol === 'http:' && loopback.has(hostname)))
     throw Error('Toolchain downloads require HTTPS.');
-  const response = await fetch(url, {
-    signal: signal
-      ? AbortSignal.any([signal, AbortSignal.timeout(120_000)])
-      : AbortSignal.timeout(120_000),
-  });
-  if (!response.ok || !response.body)
-    throw Error(`Toolchain download failed (${response.status}): ${url}`);
+  let response;
+  try {
+    response = await fetch(url, { signal: timed(signal, 120_000) });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    throw new DownloadUnavailable(
+      `Toolchain download failed (${error.cause?.code ?? error.message}): ${url}`,
+    );
+  }
+  if (!response.ok || !response.body) {
+    await response.body?.cancel().catch(() => {});
+    throw new DownloadUnavailable(
+      `Toolchain download failed (${response.status}): ${url}`,
+    );
+  }
+  return response;
+}
+async function download(url, file, checksum, limit = 200_000_000, signal) {
+  const response = await request(url, signal);
   const hash = createHash('sha256');
   let size = 0;
   const reader = response.body.getReader();
@@ -101,6 +124,133 @@ async function download(url, file, checksum, limit = 200_000_000, signal) {
   } finally {
     reader.releaseLock();
   }
+}
+
+/** Package file hosts. `sources` overrides them in tests only. */
+const PACKAGE_SOURCES = {
+  cdn: 'https://cdn.jsdelivr.net/npm',
+  registry: 'https://registry.npmjs.org',
+};
+const TARBALL_LIMIT = 50_000_000;
+const UNPACKED_LIMIT = 200_000_000;
+async function readLimited(response, limit) {
+  const chunks = [];
+  let size = 0;
+  const reader = response.body.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) throw Error('Toolchain download exceeds the size limit.');
+      chunks.push(value);
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => {});
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks);
+}
+const tarText = (block, start, length) => {
+  const field = block.subarray(start, start + length);
+  const end = field.indexOf(0);
+  return field.subarray(0, end < 0 ? length : end).toString('utf8');
+};
+const tarSize = (block) => {
+  const field = block.subarray(124, 136);
+  // GNU base-256 sizes set the high bit of the first byte.
+  if (field[0] & 0x80) {
+    let size = 0;
+    for (let index = 1; index < field.length; index++)
+      size = size * 256 + field[index];
+    return size;
+  }
+  const text = tarText(block, 124, 12).trim();
+  if (!/^[0-7]*$/.test(text)) throw Error('Invalid npm tarball entry size.');
+  return text ? parseInt(text, 8) : 0;
+};
+/**
+ * Regular files in an uncompressed tar archive by path. Reads ustar prefixes,
+ * pax `path` records and GNU long names; other entry types are skipped.
+ */
+export function readTar(archive) {
+  const files = new Map();
+  let longName;
+  for (let offset = 0; offset + 512 <= archive.length; ) {
+    const block = archive.subarray(offset, offset + 512);
+    if (block.every((byte) => byte === 0)) break;
+    const size = tarSize(block);
+    const type = String.fromCharCode(block[156] || 48);
+    const body = offset + 512;
+    if (body + size > archive.length) throw Error('Truncated npm tarball.');
+    const data = archive.subarray(body, body + size);
+    offset = body + Math.ceil(size / 512) * 512;
+    if (type === 'x') {
+      for (const record of data.toString('utf8').matchAll(/\d+ path=([^\n]*)\n/g))
+        longName = record[1];
+      continue;
+    }
+    if (type === 'L') {
+      longName = tarText(data, 0, data.length);
+      continue;
+    }
+    const prefix = tarText(block, 345, 155);
+    const name =
+      longName ??
+      (prefix ? `${prefix}/${tarText(block, 0, 100)}` : tarText(block, 0, 100));
+    longName = undefined;
+    if (type === '0' || type === '7') files.set(name, data);
+  }
+  return files;
+}
+async function writeVerified(bytes, file, checksum) {
+  if (createHash('sha256').update(bytes).digest('hex') !== checksum)
+    throw Error('Toolchain checksum mismatch.');
+  await writeFile(file, bytes, { flag: 'wx' });
+}
+/**
+ * Downloads one published package file from jsDelivr. When jsDelivr is
+ * unreachable or answers non-2xx, reads the file from the npm registry tarball
+ * instead (fetched once per `tarball` memo). Both paths verify the same sha256.
+ */
+async function downloadPackageFile({
+  name,
+  version,
+  path,
+  file,
+  sha256,
+  limit,
+  signal,
+  sources = PACKAGE_SOURCES,
+  tarball,
+  progress,
+}) {
+  const { cdn, registry } = { ...PACKAGE_SOURCES, ...sources };
+  try {
+    await download(`${cdn}/${name}@${version}/${path}`, file, sha256, limit, signal);
+    return;
+  } catch (error) {
+    if (!(error instanceof DownloadUnavailable)) throw error;
+    if (!tarball.files) {
+      const url = `${registry}/${name}/-/${name.split('/').pop()}-${version}.tgz`;
+      progress(`jsDelivr is unavailable; downloading ${name} ${version} from the npm registry ...`);
+      tarball.files = request(url, signal)
+        .then((response) => readLimited(response, TARBALL_LIMIT))
+        .then((bytes) =>
+          promisify(gunzip)(bytes, { maxOutputLength: UNPACKED_LIMIT }),
+        )
+        .then(readTar)
+        .catch((cause) => {
+          throw Error(`${error.message}; npm registry fallback failed: ${cause.message}`, { cause });
+        });
+    }
+  }
+  const bytes = (await tarball.files).get(`package/${path}`);
+  if (!bytes) throw Error(`npm tarball for ${name}@${version} has no ${path}.`);
+  if (bytes.length > limit) throw Error('Toolchain download exceeds the size limit.');
+  await writeVerified(bytes, file, sha256);
 }
 
 async function javaVersion(java, signal) {
@@ -228,6 +378,7 @@ export async function ensureRenderer({
   signal,
   cache = toolchainCache(),
   progress = () => {},
+  sources,
 } = {}) {
   cache = resolve(cache);
   await mkdir(cache, { recursive: true });
@@ -240,13 +391,18 @@ export async function ensureRenderer({
     progress(`Downloading Pele renderer ${PELE_VERSION} ...`);
     const stage = `${file}.${randomUUID()}.tmp`;
     try {
-      await download(
-        `https://cdn.jsdelivr.net/npm/pele@${PELE_VERSION}/dist/pele.js`,
-        stage,
-        PELE_SHA256,
-        2_000_000,
+      await downloadPackageFile({
+        name: 'pele',
+        version: PELE_VERSION,
+        path: 'dist/pele.js',
+        file: stage,
+        sha256: PELE_SHA256,
+        limit: 2_000_000,
         signal,
-      );
+        sources,
+        tarball: {},
+        progress,
+      });
       try {
         await rename(stage, file);
       } catch (error) {
@@ -265,23 +421,23 @@ export async function ensureRenderer({
   return { file, version: PELE_VERSION, sha256: PELE_SHA256 };
 }
 
-export const XSTATE_VERSION = '6.0.0-beta.2';
+export const XSTATE_VERSION = '6.0.0-beta.3';
 /** The ESM entry and the chunks it imports, from the published package. */
 export const XSTATE_FILES = {
-  'createActor-20a97166.esm.js':
-    '98d2f98bd110115a13ae997527f6ca62392dd54dc5b80e05dce12cf67dac3f34',
-  'effectDescriptor-e93df910.esm.js':
-    '89f9c86d6a23db591e72542814771a58577bd7dfc24780476fa55ae02d22116d',
-  'legacySnapshot-9e06feb4.esm.js':
-    '3b2e725ac6f61bf6110265bfc5da645e517ca5dbea3984d327a2449f155d46b2',
+  'createActor-49ea55ba.esm.js':
+    'd3e4ab531790ffa45bf25748ffc9ef059b60b95983c36a0ef5e10a789073b886',
+  'effectDescriptor-72c62058.esm.js':
+    'c07db0cd9a14dae2190072cf8b515a9b729b32ade6f15a076c0cf88c313c93a7',
+  'legacySnapshot-fffe81a0.esm.js':
+    '0514c930459f98aa6458b68d289a8fbc51952dd29babb79ff3e86ac080427003',
   'schema.types-0ecd17b8.esm.js':
     '0367ede5890c4cbdd62fd5c6faac12095328ed252e587c485d2d45ba3ee55f54',
   'validation-05f1d517.esm.js':
     'a271f1d7426253f29cf32004ba2bd5232e85258c2acc9ef408f83198953b53cd',
   'xstate-actors.esm.js':
-    'e193931de8d7518695269cfafdc8a2e34e73f27a4a16f90c9acef1dbed7cb310',
+    '2395be15f562cd5c4acd0d692732f283470d36ea54b43fe4fd200d64990f3fbd',
   'xstate.esm.js':
-    'd0b125517efe4c5aad8e5d965f028eb1f15d48ec171fe489be7ff7d6f46dea40',
+    '396512f29621bbe3a524d9e37a7b32a0bcb3cb4a7b8ca28d1d81a5437378668f',
 };
 
 /**
@@ -294,8 +450,10 @@ export async function ensureXState({
   signal,
   cache = toolchainCache(),
   progress = () => {},
+  sources,
 } = {}) {
   cache = resolve(cache);
+  const tarball = {};
   const directory = join(cache, `xstate-${XSTATE_VERSION}`);
   await mkdir(directory, { recursive: true });
   let announced = false;
@@ -311,13 +469,18 @@ export async function ensureXState({
     await rm(file, { force: true });
     const stage = `${file}.${randomUUID()}.tmp`;
     try {
-      await download(
-        `https://cdn.jsdelivr.net/npm/xstate@${XSTATE_VERSION}/dist/${name}`,
-        stage,
+      await downloadPackageFile({
+        name: 'xstate',
+        version: XSTATE_VERSION,
+        path: `dist/${name}`,
+        file: stage,
         sha256,
-        2_000_000,
+        limit: 2_000_000,
         signal,
-      );
+        sources,
+        tarball,
+        progress,
+      });
       try {
         await rename(stage, file);
       } catch (error) {

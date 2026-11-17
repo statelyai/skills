@@ -17,6 +17,7 @@ const writeJson = (path, value) =>
 const usage = `Usage:
   stately-check.mjs check MODEL.json --rules RULES.json [--scope FILE] [--out DIR] [--source FILE] [--offline] [--share-documents] [--compact] [--json]
   stately-check.mjs check SPEC.tla [--config FILE] [--view FILE] [--out DIR] [--source FILE] [--scope FILE] [--manifest FILE] [--timeout SECONDS] [--offline] [--share-documents] [--compact] [--json] (TLA+, opt-in)
+  stately-check.mjs compare BEFORE_RUN AFTER_RUN [--force] [--json] (exit 1 when a rule is still broken or broken by the fix)
   stately-check.mjs render CHART.mmd [--out FILE.svg] [--offline]
   stately-check.mjs import-trace TRACE SPEC CONFIG PROVENANCE_JSON RESULT_JSON
   stately-check.mjs import-dot DOT SPEC CONFIG PROVENANCE_JSON RESULT_JSON
@@ -86,6 +87,24 @@ export async function main(args) {
         : `${await readText(options.compact && run.compactReport ? run.compactReport : run.report)}\nArtifacts: ${run.output}\nFull scope report: ${run.report}${run.graph ? `\nNative view: ${run.graph}` : `\nNative view unavailable: ${run.nativeViewError}`}`,
     );
     return run;
+  }
+  if (command === 'compare') {
+    const { values, positionals } = parseArgs({
+      args: paths,
+      allowPositionals: true,
+      options: { force: { type: 'boolean' }, json: { type: 'boolean' } },
+    });
+    if (positionals.length !== 2) throw usageError();
+    const { compareRuns, compareText } = await import('./check-compare.mjs');
+    const comparison = await compareRuns(positionals[0], positionals[1], {
+      force: values.force === true,
+    });
+    console.log(
+      values.json
+        ? JSON.stringify(comparison, null, 2)
+        : compareText(comparison),
+    );
+    return comparison;
   }
   if (command === 'render') {
     const { values, positionals } = parseArgs({
@@ -248,6 +267,7 @@ if (isMain) {
     if (json)
       console.log(JSON.stringify({ ok: false, error: described }, null, 2));
     else console.error(described.message);
-    process.exitCode = isCheckCommand(process.argv[2]) ? 2 : 1;
+    process.exitCode =
+      isCheckCommand(process.argv[2]) || process.argv[2] === 'compare' ? 2 : 1;
   }
 }

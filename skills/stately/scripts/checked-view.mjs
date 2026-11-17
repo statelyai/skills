@@ -239,6 +239,12 @@ export function projectedView(input, resultContent) {
   return graph;
 }
 
+/** Keeps the citation warning when a view rebuilds the report summary. */
+function withUncitedSummary(summary, uncited) {
+  if (!uncited.length || summary.includes('no source citation')) return summary;
+  return `${summary} ${uncited.length} guarded ${uncited.length === 1 ? 'transition has' : 'transitions have'} no source citation, so verdicts that depend on ${uncited.length === 1 ? 'it are' : 'them are'} unconfirmed against the application.`;
+}
+
 export function checkReport(
   result,
   graph,
@@ -347,9 +353,14 @@ export function checkReport(
       sha256,
     })),
     documents,
-    summary:
+    ...(result.uncitedConditions?.length
+      ? { uncitedConditions: result.uncitedConditions }
+      : {}),
+    summary: withUncitedSummary(
       summary ??
-      'Imported checker evidence: inspect rule outcomes, bounds and missing checks. Application behavior requires separate replay evidence.',
+        'Imported checker evidence: inspect rule outcomes, bounds and missing checks. Application behavior requires separate replay evidence.',
+      result.uncitedConditions ?? [],
+    ),
     checkedAt,
     ...((recheck ?? result.recheck)
       ? { recheck: recheck ?? result.recheck }

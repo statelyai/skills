@@ -27,8 +27,10 @@ Options:
   never shared.
 - `--compact`: without `--json`, print the concise report to stdout.
 
-The first run downloads XState 6.0.0-beta.2 into the Stately cache and verifies
-its checksums. Later runs reuse it.
+The first run downloads XState 6.0.0-beta.3 into the Stately cache and verifies
+its checksums. If jsDelivr is unreachable or refuses the request, the download
+falls back to the npm registry tarball and verifies the same checksums. Later
+runs reuse it.
 
 ## Model input
 
@@ -37,8 +39,10 @@ its checksums. Later runs reuse it.
 - A native XGraph with `nodes` and `edges`: the `graph` returned by
   `read_stately_model` or `get_stately_machine`, or a model saved with
   `save_stately_models`.
-- An XState v5 machine config with `states`, `initial`, `on`, `always`,
-  `after`, `onDone`, and `invoke.onDone`.
+- An XState machine config (v5 or v6 syntax) with `states`, `initial`, `on`,
+  `always`, `after`, `onDone`, and `invoke.onDone`, such as the `config` of a
+  machine built with `createMachine`, `setup`, or `createFSM` from
+  `xstate/fsm`.
 
 In XGraph, entry, exit, and transition actions must be arrays of objects with a
 non-empty `type`, such as `[{ "type": "markSaved" }]`. A malformed action list
@@ -69,6 +73,7 @@ stops checking before exploration.
   "actions": { "bump": { "tries": "tries < 3 ? tries + 1 : tries" } },
   "events": { "ADD": { "payloads": [{ "n": 1 }, { "n": 3 }] } },
   "fairness": { "weak": ["RETRY"] },
+  "citations": { "canRetry": "src/login.ts:42", "bump": ["src/login.ts:50-55"] },
   "rules": [
     { "id": "StartsUnlocked", "kind": "initially", "then": "!in('lockedOut')" },
     { "id": "NoLockedSignIn", "kind": "never", "when": "in('signedIn') && in('lockedOut')" }
@@ -91,6 +96,7 @@ Unknown top-level keys are rejected. Every key except `rules` is optional.
 | `rules` | Non-empty list of rules with unique `id` values. Each rule may carry a `description`. |
 | `bounds` | `maxStates` (default 50000), `timeoutMs` (default 0, which disables the wall-clock cap), and `maxAlwaysSteps` (default 50). |
 | `assumptions` | Strings copied into the report. |
+| `citations` | Guard name, action name, or transition (edge id) to a `"path:line"` or `"path:line-line"` string, or a list of them. A name that is not in the model or rules file stops checking. |
 
 When exploration stops early at a bound, every rule is `not-checked` and the
 reason is in `checker.bounds.incompleteReason`.
@@ -148,6 +154,12 @@ from the implementation.
 
 The report lists every unresolved guard and action.
 
+Cite where each guard and action comes from with `citations`. The report lists
+every guarded transition whose guard name and edge id both lack a citation
+under Uncited conditions (`uncitedConditions` in `check-result.json` and
+`check-report.json`). A rule that holds is unconfirmed until each condition it
+depends on is checked against the application.
+
 ## Verdicts
 
 Each rule gets `holds`, `broken`, or `not-checked` independently.
@@ -181,6 +193,8 @@ TLA+ path:
 - The report's `recheck` block carries `modelPath` and `rulesPath` for native
   runs, alongside the TLA-named `specPath` and `configPath`.
 - `run.json` and `inputs/`: run metadata and copies of the inputs.
+- `report.md` has an Uncited conditions section, and `compact-report.md` lists
+  them on one line.
 
 Both native checker CLIs return `0` when every rule holds, `1` when a rule is
 broken, and `2` when any rule is `not-checked`, exploration is incomplete, or the
@@ -206,6 +220,25 @@ the saved native view highlights the states at each step.
 Liveness traces end in a lasso. `loopStart` is the step index where the
 repeating part begins. `stutters: true` means the behavior stays in the last
 state forever, either because it is a dead end or because fairness is `"none"`.
+
+## Comparing runs
+
+```sh
+sh SKILL_DIR/scripts/stately-check compare BEFORE_RUN AFTER_RUN [--json] [--force]
+```
+
+Compares the `check-report.json` of two runs rule by rule: fixed, still
+broken, broken by the fix, not checked, still holds, and rules present in only
+one run. Each fixed rule lists its original counterexample as events
+(`{ type, ...payload }`) with the initial context; replay them against the
+fixed model, for example with `simulate_machine`. The command refuses runs that
+used different checkers, rules, or model bounds (context domains, `init`, event
+payloads, fairness, `bounds`, scope bounds) and names each difference; `--force`
+compares anyway. For TLA+ runs it compares each invariant and property
+definition in the spec text, so pass run directories that contain
+`check-result.json`. Guards, actions, citations, and the model may differ. The
+exit code is `1` when any rule is broken in the after run, `0` otherwise, and
+`2` when the runs cannot be compared.
 
 ## Limits
 
@@ -277,7 +310,9 @@ reads only the submitted credentials and ignores the lock:
 
 Replay the path against the application before reporting a bug. If the real
 guard also checks the lock, change the expression to
-`event.ok && !in('lockedOut')` and rerun with a new `--out`.
+`event.ok && !in('lockedOut')` and rerun with a new `--out`. Then run
+`stately-check compare runs/login-1 runs/login-2` to confirm that
+`NoSignInWhileLocked` is fixed and nothing else broke.
 
 ## When to use TLA+ instead
 

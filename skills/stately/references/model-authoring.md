@@ -26,6 +26,43 @@ assumption is needed, and how it affects the conclusion. Produce a useful bounde
 first pass. Ask a focused question only when its answer materially changes
 the model or finding; do not invent agreement or demand routine approval.
 
+Make one model step one indivisible step of the code. Split an operation at
+every `await`, callback, message, lock release, or transaction boundary, because
+another caller can run between the two halves; one model step that spans the
+boundary hides that interleaving.
+
+Model at least two concurrent callers whenever the code can run more than once
+at a time: two tabs, two requests, two workers, a retry that overlaps the first
+attempt, or a second click before the first finishes. Give each caller its own
+local state and share only what the code shares (storage, server rows, global
+stores, sockets). A model with one caller cannot find double submits, lost
+updates, or a stale response that overwrites a newer one. State the caller
+count in `scope.json`, and model one caller only when the code prevents a
+second, citing the line that prevents it.
+
+Choose rules from the bug kinds in
+[state-bugs.md](state-bugs.md), not only from the requested property: for each
+kind that applies to the flow (stuck states, event order, check then act,
+stale copies, retries and timers, error paths), add a rule or say why it does
+not apply. While reading the code, record state bugs in the requested flow
+that the model cannot express (a check skipped in one status, a status shown
+differently in two places) and report them next to the checker results as
+source findings, labeled as not model-checked. Leave out behavior that a code
+comment or test marks as intended, latency quirks, and code outside the flow.
+
+Cite the code for every guard and condition: a `\* path:line` comment on the
+TLA+ condition, or saved-model evidence (or `meta.source`) on the native
+transition, guard, or action. Before reporting that a rule holds for code, list
+every condition without a citation, and report the rule as holding in the model
+with those conditions unconfirmed.
+
+When the owners agree on intended behavior before or apart from the code, keep
+two models: the agreed model and the code model. Check both with the same
+rules, compare them state by state and transition by transition, and ask the
+owners about each difference: either the code is wrong or the agreed model
+needs a correction. A rule that breaks in the agreed model is a design bug to
+take to the owners before anyone changes code.
+
 Define `Next` as a disjunction of named actions, so traces identify the operation
 that changed state. A single anonymous `Next` can label every step identically.
 Keep constants finite/small or add a reviewed constraint; exploration continues
@@ -131,22 +168,26 @@ Rerun bounds can change which temporal witness TLC finds. `tlc.out` describes th
 original check; `tlc-RULE.out` supplies separate failure evidence when applicable.
 
 The 500-state diagram budget uses the original configured run's state count.
-Above it, Mermaid contains failure paths; with no failures there may be no
-`chart.mmd`. The complete report still carries counts, rules, and all witnesses.
+Above it, the TLA+ chart contains only failure paths; with no failures there
+may be no `chart.mmd`. The complete report still carries counts, rules, and all witnesses.
 Native Checks may provide a summary-only view. Do not invent an image or path.
 
 ## Hand off and replay
 
 Use `compact-report.md` to orient the reader; inspect `report.md` and the JSON
-for full evidence. Give each available chart as Mermaid text and an SVG from
-[render.md](render.md), plus the native Checks link when available. For every
+for full evidence, and quote counts only from them. Give the native Checks link
+for each run. Provide Mermaid text or an SVG from [render.md](render.md) only
+when the user asks for one. For every
 bug, provide the rule, its domain meaning, and the path using the report's step
 numbers. Preserve closing loops/stutters, say what the model omits and what the
 chart hides, and give the command with a fresh `--out` directory.
 
 For code models, replay each action against the real application through its
-existing tests or a live reproduction. Check observable effects, not just model
-positions. If the path fails to reproduce, first suspect the model or its mapping
+existing tests or a live reproduction. Drive only entry points a user, client,
+or peer can reach, and check observable effects, not only model positions. A
+test that asserts a flag it set itself, calls private helpers, or greps source
+proves nothing about the application. Say which part of a conclusion a run
+proves and which part rests on reading the code. If the path fails to reproduce, first suspect the model or its mapping
 to real operations; investigate before claiming an application defect. Record
 actual passed/failed checks separately from formal results, or `not-run` with a
 reason. A diagram playback does not execute the application.
