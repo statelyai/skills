@@ -1,6 +1,8 @@
 ---
 name: improve-machine
 description: Experimental. Improve a @statelyai/agent policy machine (a TypeScript setupAgent machine or a JSON AgentWorkflowConfig) from its run traces toward its goal, inside a fixed environment machine, with gates and a held-out promotion rule, and hand the result to a person as a pull request. Use when asked to "improve this agent", "self-improve", "optimize the playbook from traces", "tune the policy", "make the agent cheaper or more accurate", or "why is my agent failing" for a machine whose runs are persisted to an event log store.
+metadata:
+  internal: true
 ---
 
 # Improve an agent machine

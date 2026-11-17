@@ -1,6 +1,8 @@
 ---
 name: add-traces
 description: Make every run of a @statelyai/agent or XState machine leave a replayable, stamped trace — an event log thread plus trace events — so evals and self-improvement can read what happened and what produced it. Use when asked to "add tracing", "add logging", "persist runs", "stamp traces", "record what the agent did", or "set up observability" for an agent machine, or before writing evals or improving a policy from traces.
+metadata:
+  internal: true
 ---
 
 # Add traces to an agent machine

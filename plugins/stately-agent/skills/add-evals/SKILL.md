@@ -1,6 +1,8 @@
 ---
 name: add-evals
 description: Write evals for a @statelyai/agent or XState agent machine at the right level — rule checks with no model, decision evals at one decision state, outcome evals over whole runs, and per-state stats from traces — each tied to the states it covers. Use when asked to "write evals", "add evals for the approval logic", "test the agent", "measure the agent", "build an eval suite", or "what should I eval" for an agent built as a state machine.
+metadata:
+  internal: true
 ---
 
 # Add evals to an agent machine
