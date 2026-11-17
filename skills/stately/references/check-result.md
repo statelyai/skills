@@ -16,6 +16,7 @@ writing JSON; consumers must validate after reading. Unknown versions fail.
 | transitions       | `{ id, from, to, action, label? }[]`; stable raw endpoints and action identity, distinct from a human label.                                                                                                                                                                                 |
 | counterexamples   | `{ id, ruleId, states: rawId[], transitions: stepId[], loopStart?, stutters? }[]`; first state initial; consecutive edges must match. Loop index is zero based. Explicit closing steps may repeat a state; stuttering may instead identify the last state as loopStart with stutters true.   |
 | projection        | Optional `{ regions, notes, ... }`; each region has `{ id, name, states }`. Each projected state has `{ id, path: string[], members: rawId[], marks }`; marks are `{ ruleId, kind: breaks/mayBreak }`. Resolved arrow conditions and hidden-step notes can be retained as additional fields. |
+| uncitedConditions | Optional, native runs: `{ edgeId, guard?, eventType, source }[]`, guarded transitions whose guard has no source citation in the rules file. |
 
 Additional producer metadata is retained, not interpreted as executable code.
 Changing field meaning requires a new schema version. Paths/loop indices always

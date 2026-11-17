@@ -38,9 +38,10 @@ A trace establishes only its stated failure; a DOT establishes no rule verdict
 or exploration completeness. pstack's pinned TLC 1.7.4 cannot write
 `-dumpTrace json`; rerun TLC 1.8+ for a trace, or check anew with `/stately`.
 
-If only Mermaid/report exist, render the chart with
-`sh SKILL_DIR/scripts/stately-check render chart.mmd` and, for a native diagram,
-use `visualize_machine({format:"mermaid",machine:chartText})`. Both are lossy:
+If only a pstack Mermaid chart and report exist, show it in Stately with
+`visualize_machine({format:"mermaid",machine:chartText})`, and render an SVG
+with `sh SKILL_DIR/scripts/stately-check render chart.mmd` only when the user
+asks for an image. Both are lossy:
 they carry no verdicts, variables, or raw paths. Read warnings and compare
 states and paths with the original report. Keep historical evidence
 separate from a newly executed check. Presentation legends must be explicit

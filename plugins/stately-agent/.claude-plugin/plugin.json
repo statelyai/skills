@@ -1,0 +1,18 @@
+{
+  "name": "stately-agent",
+  "displayName": "Stately Agent",
+  "version": "0.1.0",
+  "description": "Skills for building, porting, tracing, evaluating, and improving @statelyai/agent machines.",
+  "author": {
+    "name": "Stately",
+    "url": "https://stately.ai"
+  },
+  "homepage": "https://github.com/statelyai/agent",
+  "repository": "https://github.com/statelyai/skills",
+  "license": "MIT",
+  "keywords": [
+    "state-machines",
+    "agents",
+    "xstate"
+  ]
+}

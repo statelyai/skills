@@ -64,6 +64,9 @@ function compactReport(result) {
       lines.push(`  ${trace.id}: ${path.join(' | ')}${trace.loopStart !== undefined ? ` (loops to step ${trace.loopStart})` : ''}${trace.stutters ? ' (stutters)' : ''}`);
     }
   }
+  const uncited = result.uncitedConditions ?? [];
+  if (uncited.length)
+    lines.push('', `Uncited conditions (${uncited.length}): ${uncited.map((item) => `${item.guard ?? '(unnamed guard)'} [${item.edgeId}]`).join(', ')}`);
   return lines.join('\n') + '\n';
 }
 

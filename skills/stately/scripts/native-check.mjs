@@ -504,7 +504,7 @@ const RULE_KINDS = ['never', 'initially', 'eventually', 'eventually-always', 'le
 export function parseRules(input) {
   if (!record(input)) fail('rules must be a JSON object');
   for (const key of Object.keys(input))
-    if (!['context', 'init', 'guards', 'actions', 'events', 'rules', 'bounds', 'fairness', 'assumptions'].includes(key))
+    if (!['context', 'init', 'guards', 'actions', 'events', 'rules', 'bounds', 'fairness', 'assumptions', 'citations'].includes(key))
       fail(`unknown rules key ${key}`);
   const domains = {};
   for (const [name, spec] of Object.entries(input.context ?? {})) {
@@ -551,6 +551,14 @@ export function parseRules(input) {
     fairness = { kind: 'events', events: fairness.weak };
   else fail('fairness must be "weak", "none", or { "weak": [eventTypes] }');
   const init = input.init === undefined ? [{}] : Array.isArray(input.init) ? input.init : [input.init];
+  if (input.citations !== undefined && !record(input.citations)) fail('citations must map a guard, action, or transition id to "path:line" strings');
+  const citations = {};
+  for (const [name, value] of Object.entries(input.citations ?? {})) {
+    const list = Array.isArray(value) ? value : [value];
+    if (!list.length || !list.every((item) => typeof item === 'string' && CITATION.test(item)))
+      fail(`citation ${name} must be a "path:line" string or a non-empty list of them`);
+    citations[name] = list;
+  }
   if (!init.length || !init.every(record)) fail('init must be an object or a non-empty list of objects');
   return {
     domains,
@@ -567,7 +575,40 @@ export function parseRules(input) {
       timeoutMs: input.bounds?.timeoutMs ?? 0,
     },
     assumptions: input.assumptions ?? [],
+    citations,
   };
+}
+
+/** `path:line` or `path:line-line`. */
+const CITATION = /^\S(?:.*\S)?:\d+(?:-\d+)?$/;
+
+/** Citation keys name a guard, an action, or a transition (edge id) in the model or rules. */
+function validateCitations(model, rules) {
+  const known = new Set([...Object.keys(rules.guards), ...Object.keys(rules.actions)]);
+  for (const edge of model.edges) {
+    known.add(edge.id);
+    if (edge.guard?.type) known.add(edge.guard.type);
+    for (const action of edge.actions) known.add(action.type);
+  }
+  for (const node of model.nodes.values()) for (const action of [...node.entry, ...node.exit]) known.add(action.type);
+  for (const item of [...(model.implementations.guards ?? []), ...(model.implementations.actions ?? [])]) known.add(item.name ?? item.id);
+  for (const name of Object.keys(rules.citations))
+    if (!known.has(name)) fail(`citations: ${JSON.stringify(name)} is not a guard, action, or transition id in the model or rules`);
+}
+
+/**
+ * Every guarded transition whose guard has no source citation, by guard name or edge id.
+ * A rule that holds still depends on these conditions matching the application.
+ */
+export function uncitedConditions(model, citations) {
+  return model.edges
+    .filter((edge) => edge.guard && !(edge.guard.type && citations[edge.guard.type]) && !citations[edge.id])
+    .map((edge) => ({
+      edgeId: edge.id,
+      ...(edge.guard.type ? { guard: edge.guard.type } : {}),
+      eventType: edge.eventType || 'xstate.always',
+      source: model.nodes.get(edge.sourceId).path.join('.') || edge.sourceId,
+    }));
 }
 
 function validateStateReferences(model, rules) {
@@ -925,6 +966,7 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
     rules.actions[name] = pairs;
   }
   const stateReferences = validateStateReferences(model, rules);
+  validateCitations(model, rules);
   const diagnostics = { unresolvedGuards: new Set(), unresolvedActions: new Set(), unresolvedEdges: new Set(), extracted };
   if (xstate && typeof xstate.getMicrosteps !== 'function') fail('the supplied xstate module is not XState v6');
   const engine = new Engine(model, rules, diagnostics, xstate, stateReferences);
@@ -1286,6 +1328,7 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
     })),
     transitions,
     counterexamples,
+    uncitedConditions: uncitedConditions(model, rules.citations),
   });
   return { result, model, rules, diagnostics, elapsedMs };
 }
@@ -1319,6 +1362,12 @@ function modelToXGraph(modelInput, model) {
   return { id: model.root.id, nodes, edges, annotations: [], data: {} };
 }
 
+const uncitedSummary = ({ uncitedConditions: uncited = [] }) =>
+  uncited.length
+    ? ` ${uncited.length} guarded ${uncited.length === 1 ? 'transition has' : 'transitions have'} no source citation, so verdicts that depend on ${uncited.length === 1 ? 'it are' : 'them are'} unconfirmed against the application.`
+    : '';
+const conditionText = (item) => `${item.guard ?? '(unnamed guard)'} on ${item.eventType} from ${item.source} (edge ${item.edgeId})`;
+
 /** The check report for a run, independent of any graph; `nativeGraph` attaches it. */
 export function checkReport({ result }, { summary } = {}) {
   const states = new Map(result.states.map((state) => [state.id, state]));
@@ -1350,9 +1399,10 @@ export function checkReport({ result }, { summary } = {}) {
     traces,
     artifacts: result.binding.artifacts.map(({ role, path, sha256 }) => ({ role, path, sha256 })),
     documents: [],
+    uncitedConditions: result.uncitedConditions ?? [],
     summary:
       summary ??
-      `${CHECKER_NAME} explored ${result.states.length} configurations and ${result.transitions.length} steps over the native model. ${counts('holds')} rules hold, ${counts('broken')} broken, ${counts('not-checked')} not checked. Model checks do not prove application behavior.`,
+      `${CHECKER_NAME} explored ${result.states.length} configurations and ${result.transitions.length} steps over the native model. ${counts('holds')} rules hold, ${counts('broken')} broken, ${counts('not-checked')} not checked.${uncitedSummary(result)} Model checks do not prove application behavior.`,
     checkedAt: result.checker.checkedAt,
     applicationChecks: [],
   };
@@ -1410,6 +1460,19 @@ export function humanReport({ result }) {
     lines.push('');
   }
   lines.push('## Assumptions', '', ...result.checker.assumptions.map((item) => `- ${item}`), '');
+  const uncited = result.uncitedConditions ?? [];
+  lines.push(
+    '## Uncited conditions',
+    '',
+    ...(uncited.length
+      ? [
+          'These guards have no source citation in the rules file. A rule that holds is unconfirmed until each condition it depends on is checked against the application.',
+          '',
+          ...uncited.map((item) => `- ${conditionText(item)}`),
+        ]
+      : ['Every guarded transition has a source citation.']),
+    '',
+  );
   return lines.join('\n');
 }
 

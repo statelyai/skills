@@ -49,7 +49,8 @@ processes are terminated together; parent death also triggers cleanup.
 
 - `compact-report.md`: concise chart context, rule outcomes, and failure paths.
 - `report.md`: complete human report, each rule's verdict, scope and limits.
-- `chart.mmd`: readable Mermaid fallback when a chart exists.
+- `chart.mmd`: the TLA+ chart as Mermaid, rendered only on request; the saved
+  native view is the primary output.
 - `tlc.out` and per-rule output: actual checker diagnostics.
 - `check-result.json`: complete raw states, transitions, tagged TLA values,
   counterexamples, projection mappings, exact source contents and hashes.
@@ -70,7 +71,9 @@ Checking copies the specification, the local `.tla` modules it reaches through
 `EXTENDS` and `INSTANCE` (transitively, ignoring comments and strings), and the
 selected config into `inputs/` as `Run.cfg`. Standard modules such as `Naturals`
 have no local file and come from TLC. SANY then reports the modules it actually
-loaded; only those are bound in the completed result. Unused neighbors are
+loaded; only those are bound in the completed result. When SANY cannot read a
+specification, the error shows SANY's error section, with line and column,
+capped at 40 lines. Unused neighbors are
 neither copied nor gate freshness. The selected view executes once in its original module context;
 observed view-file changes invalidate publication. Imported JS dependencies,
 external effects, and model/application refinement remain explicit assumptions.
@@ -112,9 +115,9 @@ with no failures it can be a summary-only native view. Multiple rules continue
 to be checked, with bounded reruns marked not checked when exhausted. The
 complete raw result/human report remain authoritative about each verdict.
 
-For every `.mmd` chart shown, run the owned `render` command and provide its SVG
-and Mermaid text; see [render.md](render.md). A failed image render does not
-change a checked verdict. Preserve the Mermaid and report the rendering error.
+When the user asks for an image, run the owned `render` command on
+`chart.mmd`; see [render.md](render.md). A failed image render does not change
+a checked verdict; report the rendering error.
 
 The saved editor model has a 200000-character budget, including report/docs.
 The runner uses a 195000-character budget and never silently drops evidence.

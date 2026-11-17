@@ -9,7 +9,9 @@
       "upstreamSha256": "aea4d8766d214e7fa08f4881f1037319655e75eb56652e1b6d5d4f13a162e3e1"
     },
     "backends/mermaid.ts": {
-      "upstreamSha256": "75704b2704a9399a39479ff704a580d5b9a1d0fede01fe771df28bf799b434b6"
+      "upstreamSha256": "75704b2704a9399a39479ff704a580d5b9a1d0fede01fe771df28bf799b434b6",
+      "localSha256": "ce293d34ce3928d93329bd6d1a889d5722620008dae4339add79ef226c3f9b88",
+      "adaptation": "Ported from cursor/plugins bf0c7cd8: an arrow from outside a parent state ends at the parent's border and the parent's start marker leads inside."
     },
     "backends/plain-text.ts": {
       "upstreamSha256": "e2bedb855eb3806ec3fe7a7bfa49baa309fb4cf0da425b5fe1e0686268ce255a"
@@ -84,7 +86,9 @@
       "adaptation": "Return resolved projection labels for exact native trace bindings."
     },
     "run.ts": {
-      "upstreamSha256": "9f406d509086d78c7690a12d16a6e0e5625ec37b0576223eb43da7d13952b880"
+      "upstreamSha256": "9f406d509086d78c7690a12d16a6e0e5625ec37b0576223eb43da7d13952b880",
+      "localSha256": "eb1503be38909d76d122d229b18eaeb7a8bc6152922d26704d7ea08eb890e733",
+      "adaptation": "Ported from cursor/plugins bf0c7cd8: when SANY's XML run fails, rerun SANY in plain mode and report its error section, capped at 40 lines."
     },
     "statechart.ts": {
       "upstreamSha256": "42e36d3deff261d01ab6a7e5e3298e27ea7d05616d94a0c468da4fb7ce2e1761"
