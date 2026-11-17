@@ -1,6 +1,8 @@
 ---
 name: generate-machine
 description: Author a @statelyai/agent workflow as JSON and check it before it runs. Use when asked to generate or author an agent machine, create a workflow config, write an AgentWorkflowConfig, or produce an LLM-authored state machine for an agent — and when a generated config fails verifyAgentConfig, Ajv validation, or agent lint and needs repair.
+metadata:
+  internal: true
 ---
 
 # Generate an agent machine

@@ -1,6 +1,8 @@
 ---
 name: graph-engineering
 description: Route an agent-reliability request to the right @statelyai/agent skill and keep the four steps in order — make it a state machine, add traces, add evals, self-improve. Use when asked to "make my agent reliable", "graph engineering", "turn my agent into a state machine and improve it", "where do I start with this agent", or any request that spans more than one of those steps.
+metadata:
+  internal: true
 ---
 
 # Graph engineering
