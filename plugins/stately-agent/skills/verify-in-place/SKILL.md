@@ -58,6 +58,7 @@ vi.mock("ai", async (importOriginal) => {
 - `recorder.model` records each provider attempt, and `effect.call` counts attempts. A failed call followed by the same request has `retriedBy`, whoever resent it: the SDK (`maxRetries`, retryable errors only) or the code's own retry. Read the code first:
   - No retry of its own: skip `retriedBy` effects in the mapping, and count the code's calls yourself.
   - Its own retry: skip only effects whose `error.data.isRetryable` is `true` (the SDK's attempts), and keep the rest, so the model checks the code's retry path and call limit. Script the code's retry scenarios with errors the SDK does not retry (`isRetryable: false`), so each kept effect is one call the code made.
+  - The `isRetryable` rule misreads two cases: the code passes `maxRetries: 0` and resends after a retryable error, or the code resends after the SDK's last attempt. `retriedBy` cannot tell who resent the call there. List the retry path as unchecked in recordings of real runs.
 
 If none of these reach a side effect, the only edit allowed is extracting a seam (an `effects` object passed in). Ask the user before making it, and change nothing else.
 
