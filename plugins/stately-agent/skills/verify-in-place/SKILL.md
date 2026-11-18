@@ -56,7 +56,7 @@ vi.mock("ai", async (importOriginal) => {
 - A call while `currentSeam()` returns `undefined` throws, so no test reaches a real provider.
 - A tool with `execute` runs inside the `generateText` call, before the loop sees the result. Read the loop with that order, not line by line: a check the loop makes after `generateText` returns comes after the tool already ran.
 - `recorder.model` records each provider attempt, and `effect.call` counts attempts. `recordAiSdk` stamps each attempt with `aiSdkCall`, the `generateText` call it belongs to: attempts with the same `aiSdkCall` are one call the code made (its tool-loop steps and the SDK's retries). Count the code's calls by `aiSdkCall`.
-- A failed attempt followed by the same request has `retriedBy`. If the `retriedBy` attempt has the same `aiSdkCall`, the SDK retried it: skip it in the mapping. If it has a different `aiSdkCall`, the code resent it: keep it, so the model checks the code's retry path and call limit.
+- A failed attempt followed by the same request has `retriedBy`. If the `retriedBy` attempt has the same `aiSdkCall`, the SDK retried it: skip it in the mapping. If it has a different `aiSdkCall`, the code resent it: keep it, so the model checks the code's retry path and call limit. An attempt with no `aiSdkCall` was not routed through `recordAiSdk`, so who resent it is unknown: keep it.
 
 If none of these reach a side effect, the only edit allowed is extracting a seam (an `effects` object passed in). Ask the user before making it, and change nothing else.
 
