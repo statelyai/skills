@@ -7,7 +7,7 @@ metadata:
 
 # Verify existing code in place
 
-> Targets `@statelyai/agent` 2.0 alpha, as on the [`next` branch](https://github.com/statelyai/agent/tree/next). Needs a version whose `@statelyai/agent/testing` exports `checkConformance` and `recordAiSdk` (check the imports, not the version number). APIs change between alphas: when a call here does not match the installed package, check `node_modules/@statelyai/agent/CHANGELOG.md`.
+> Targets `@statelyai/agent` 2.0 alpha, as on the [`next` branch](https://github.com/statelyai/agent/tree/next). Needs a version whose `@statelyai/agent/testing` exports `checkConformance` and `recordAiSdk`, and whose `RecordedModelCall` type has `aiSdkCall` (check the package, not the version number). APIs change between alphas: when a call here does not match the installed package, check `node_modules/@statelyai/agent/CHANGELOG.md`.
 
 You leave the code alone and build evidence about it: a model of its control flow, proofs of the model's rules, and a check that recorded runs of the code conform to the model.
 
@@ -55,10 +55,8 @@ vi.mock("ai", async (importOriginal) => {
 - `recordAiSdk` replaces the model, not the tools: each tool's real `execute` runs. Before recording, read every tool the code passes. A tool with an external effect (it moves money, sends a message, writes to a shared store) must run against a stand-in: mock the module or client it calls, the same way as other module imports. Ask the user before any scenario would reach a real external system, and never record against production.
 - A call while `currentSeam()` returns `undefined` throws, so no test reaches a real provider.
 - A tool with `execute` runs inside the `generateText` call, before the loop sees the result. Read the loop with that order, not line by line: a check the loop makes after `generateText` returns comes after the tool already ran.
-- `recorder.model` records each provider attempt, and `effect.call` counts attempts. A failed call followed by the same request has `retriedBy`, whoever resent it: the SDK (`maxRetries`, retryable errors only) or the code's own retry. Read the code first:
-  - No retry of its own: skip `retriedBy` effects in the mapping, and count the code's calls yourself.
-  - Its own retry: skip only effects whose `error.data.isRetryable` is `true` (the SDK's attempts), and keep the rest, so the model checks the code's retry path and call limit. Script the code's retry scenarios with errors the SDK does not retry (`isRetryable: false`), so each kept effect is one call the code made.
-  - The `isRetryable` rule misreads two cases: the code passes `maxRetries: 0` and resends after a retryable error, or the code resends after the SDK's last attempt. `retriedBy` cannot tell who resent the call there. List the retry path as unchecked in recordings of real runs.
+- `recorder.model` records each provider attempt, and `effect.call` counts attempts. `recordAiSdk` stamps each attempt with `aiSdkCall`, the `generateText` call it belongs to: attempts with the same `aiSdkCall` are one call the code made (its tool-loop steps and the SDK's retries). Count the code's calls by `aiSdkCall`.
+- A failed attempt followed by the same request has `retriedBy`. If the `retriedBy` attempt has the same `aiSdkCall`, the SDK retried it: skip it in the mapping. If it has a different `aiSdkCall`, the code resent it: keep it, so the model checks the code's retry path and call limit.
 
 If none of these reach a side effect, the only edit allowed is extracting a seam (an `effects` object passed in). Ask the user before making it, and change nothing else.
 
