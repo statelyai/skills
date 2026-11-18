@@ -1,6 +1,8 @@
 ---
 name: loop-to-machine
 description: Convert existing agent code (a while-loop around a model, a tool loop, a tool-call scheduler, ad-hoc if/else control flow) into an XState v6 state machine with @statelyai/agent, and prove with a parity report that it behaves like the code it replaces. Use when asked to "turn this agent into a state machine", "port my loop to xstate", "make this a statechart", "refactor this agent into a machine", or "split environment and policy" for code that already runs.
+metadata:
+  internal: true
 ---
 
 # Convert agent code to a machine
