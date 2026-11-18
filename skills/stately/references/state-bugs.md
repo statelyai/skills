@@ -175,6 +175,12 @@ reason close to one in [the list below](#the-lead-ledger), and reopen it when
 the cited line does not block the sequence. Most missed bugs are leads that
 were found and then cleared.
 
+A replay proves only what it drives and observes. Drive entry points a user,
+client, scheduler, or peer can reach, and assert effects they can observe. A
+test that asserts a flag it set itself, calls private helpers, or greps source
+proves nothing about the application. Say which part of a finding a run proves
+and which part rests on reading the code.
+
 For a consequential finding, go further when the user asks or the cost of a
 miss is high (payments, sync, migrations, job queues, auth): build a small
 model of the sequence, check it with [Check invariants](../SKILL.md#check-invariants),

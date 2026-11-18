@@ -1,6 +1,8 @@
 ---
 name: verify-in-place
 description: Verify existing agent code without changing it. Write a model of its control flow as a @statelyai/agent machine, prove the model's rules with canReach, record runs of the unchanged code, and check them against the model with checkConformance and traceCoverage. Use when asked to "verify my agent without rewriting it", "check my existing agent against a model", "prove my loop never does X", "model my existing workflow", "conformance", or "add guarantees to this agent" for code that already runs and should stay as it is. Migration to a machine is a separate step (loop-to-machine).
+metadata:
+  internal: true
 ---
 
 # Verify existing code in place
@@ -50,9 +52,12 @@ vi.mock("ai", async (importOriginal) => {
 ```
 
 - The seam module must not import `"ai"`, or the mock deadlocks. Import error classes from `@ai-sdk/provider`.
+- `recordAiSdk` replaces the model, not the tools: each tool's real `execute` runs. Before recording, read every tool the code passes. A tool with an external effect (it moves money, sends a message, writes to a shared store) must run against a stand-in: mock the module or client it calls, the same way as other module imports. Ask the user before any scenario would reach a real external system, and never record against production.
 - A call while `currentSeam()` returns `undefined` throws, so no test reaches a real provider.
 - A tool with `execute` runs inside the `generateText` call, before the loop sees the result. Read the loop with that order, not line by line: a check the loop makes after `generateText` returns comes after the tool already ran.
-- `recorder.model` records each provider attempt. A failed attempt the SDK retried has `retriedBy`: skip it in the mapping, and count the code's calls yourself, because `effect.call` counts attempts.
+- `recorder.model` records each provider attempt, and `effect.call` counts attempts. A failed call followed by the same request has `retriedBy`, whoever resent it: the SDK (`maxRetries`, retryable errors only) or the code's own retry. Read the code first:
+  - No retry of its own: skip `retriedBy` effects in the mapping, and count the code's calls yourself.
+  - Its own retry: skip only effects whose `error.data.isRetryable` is `true` (the SDK's attempts), and keep the rest, so the model checks the code's retry path and call limit. Script the code's retry scenarios with errors the SDK does not retry (`isRetryable: false`), so each kept effect is one call the code made.
 
 If none of these reach a side effect, the only edit allowed is extracting a seam (an `effects` object passed in). Ask the user before making it, and change nothing else.
 
@@ -83,7 +88,7 @@ export const refundModel = setupAgent({
 
 ## 4. Proofs
 
-For each rule, a `canReach` test with `reachable: false` **and** `complete: true`. The search forks only on the values in `outputs` and `payloads`, so the proof covers those values and no others: give each actor the outputs at each rule's boundary (just under and over a threshold, the cap reached). Say which values in the hand-back.
+For each rule, a `canReach` test with `reachable: false` **and** `complete: true`. The search forks only on the values in `outputs` and `payloads`, so the proof covers those values and no others: give each actor the outputs at each rule's boundary: just under, exactly at, and just over each threshold, and the cap reached. A guard written `>` where the rule means `>=` passes with only the values on either side. Say which values in the hand-back.
 
 - **Non-vacuity:** for each rule, also show the guarded path exists, for example a large refund reached through approval is `reachable: true`. A proof over a path the model cannot take proves nothing.
 - **Mutation check:** weaken one guard in a throwaway copy of the model and confirm the proof finds a witness. Delete the copy.
@@ -91,7 +96,7 @@ For each rule, a `canReach` test with `reachable: false` **and** `complete: true
 
 ## 5. Record runs
 
-Write scenarios that drive the code with scripted stand-ins: one per rule, each boundary, each exit (replied, refunded, declined, escalated, errors). Record each with `createRecorder` through the seam, and record the return value with `recorder.output(await run(...))`. Run the code as it is. Save recordings as JSON fixtures when the stand-ins are slow or nondeterministic.
+Write scenarios that drive the code with scripted stand-ins: one per rule, each boundary (under, at, and over each threshold), each exit (replied, refunded, declined, escalated, errors). Record each with `createRecorder` through the seam, and record the outcome with `recorder.output(...)`: the return value, or `{ threw: error.message }` when the code throws (see step 7). Run the code as it is. Save recordings as JSON fixtures when the stand-ins are slow or nondeterministic.
 
 ## 6. Map recorded calls to observations
 
@@ -131,10 +136,13 @@ const report = await checkConformance(refundModel, {
   events: {
     approval: {
       event: (o) => ({ type: o.approved ? "APPROVE" : "REJECT" }),
-      matches: ({ observation, context }) => observation.amount === context.amount,
+      matches: ({ observation, context }) => observation.amount === (context as { amount: number }).amount,
     },
   },
-  output: { observes: "returned", matches: ({ output, observation }) => output.outcome === observation.outcome },
+  output: {
+    observes: "returned",
+    matches: ({ output, observation }) => (output as { outcome: string }).outcome === observation.outcome,
+  },
 });
 expect(report.deviation).toBeUndefined();
 ```
@@ -146,7 +154,7 @@ expect(report.deviation).toBeUndefined();
 - A deviation means the code or the model is wrong. Report it with `reason`, `expected`, `observed`, and `state`. Do not change the model to make a run conform without asking: the code may have the bug.
 - Once you have confirmed a deviation is a finding about the code, keep the suite green by pinning it: the scenario's test asserts that exact deviation (`reason`, `state`, observed kind), with a comment that names the bug and says to remove the pin when the code is fixed. Never delete the scenario.
 - An event entry `{ event, matches }` compares the observation with the model's `context` and `state`: the draft a person approved against the draft the model holds. A function entry compares nothing; list its payload as unchecked in the hand-back.
-- `output` checks the code's return value: the model must finish there, and `matches` compares the outputs. Pass it for every run that returned; leave it out for a run where the code threw. Without it, a recorded return value is an `extra-observations` deviation.
+- `output` checks the code's return value: the model must finish there, and `matches` compares the outputs. Pass it for every run, including runs where the code threw: record the throw as the outcome (`recorder.output({ threw: error.message })` in the scenario's `catch`) and model each failure the code throws as a final state whose output `matches` compares. A model that errors instead of finishing leaves the outcome unconsumed, which deviates. Never leave `output` out to make a thrown run pass: the run would conform with its outcome unchecked. Without `output`, a recorded return value is an `extra-observations` deviation.
 
 ## 8. Coverage
 

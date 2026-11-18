@@ -1,7 +1,8 @@
 # Render a checked chart
 
-Native Checks is the interactive review surface. For every `.mmd` chart shown,
-also provide its Mermaid text and a portable SVG through the owned command:
+Native Checks is the review surface: give its link for every run. Render a TLA+
+run's `.mmd` chart only when the user asks for an image or for the Mermaid
+text, through the owned command:
 
 ```sh
 sh SKILL_DIR/scripts/stately-check render RUN_DIR/chart.mmd
@@ -26,6 +27,8 @@ large enough for the checker diagram budget. If rendering fails, preserve and
 show the Mermaid text plus the actual error. A rendering error changes no TLC
 verdict. Do not substitute a different renderer unless the user requests it.
 With no `chart.mmd`, show the rule summary/report rather than inventing a chart.
+An arrow from outside a parent state ends at the parent's border, and the
+parent's start marker leads to the state inside.
 
 The CSS below is the shared light/dark styling applied by the owned helper.
 It preserves group colors, definite/possible breaks, shortest bug paths, and

@@ -1,6 +1,8 @@
 ---
 name: build-machine
 description: Build a new @statelyai/agent machine in TypeScript from a product spec and prove its invariants. Use when asked to build an agent from scratch whose rules need thresholds, counters, caps, spawned fan-out, timers, or any-time events (cancel, takeover, interrupt) — anything the JSON config's truthy-only guards cannot express — and when asked to prove a spec's invariants with canReach or explorePaths.
+metadata:
+  internal: true
 ---
 
 # Build an agent machine

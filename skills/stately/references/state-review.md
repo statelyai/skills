@@ -139,33 +139,43 @@ reproduction instead.
 
 ### Bug path diagram
 
-For each high-consequence finding, at most three, draw the affected flow as a
-Mermaid `stateDiagram-v2`: the states the finding names, the events of its
-sequence labeled with their step numbers, and the state where it goes wrong
-marked with `class <state> breaks` and a `classDef breaks` line. A stuck state
-is a self-transition on the event that has no exit. Put the fix in a note. Keep
-the chart to the flow the finding touches and label it estimated from source.
+For each high-consequence finding, at most three, build the affected flow as an
+XState v6 config: the states the finding names, one event per step of its
+sequence (prefix the description with the step number), and the state where it
+goes wrong, colored with `"meta": { "@statelyai.color": "red" }` and described
+with the fix. A stuck state is a self-transition on the
+event that has no exit. Keep the flow to what the finding touches. Show it with
+`visualize_machine({ format: "xstate", machine: config })` and put the returned
+link next to the finding, labeled estimated from source.
 
-```mermaid
-stateDiagram-v2
-  [*] --> Idle
-  Idle --> Uploading: 1. user picks a file
-  Uploading --> Idle: upload finishes
-  Uploading --> Uploading: 2. server returns no URL, early return (bug)
-  note right of Uploading
-    No exit on "no URL": button stays disabled.
-    Fix: reset in finally (Uploading to Idle).
-  end note
-  classDef breaks fill:#fdd,stroke:#c00
-  class Uploading breaks
+```json
+{
+  "id": "upload",
+  "initial": "idle",
+  "states": {
+    "idle": { "on": { "PICK_FILE": { "target": "uploading", "description": "1. user picks a file" } } },
+    "uploading": {
+      "meta": { "@statelyai.color": "red" },
+      "description": "Bug: no exit when the server returns no URL; the button stays disabled. Fix: reset in finally.",
+      "on": {
+        "UPLOADED": { "target": "idle" },
+        "NO_URL": { "target": "uploading", "description": "2. early return skips the reset (bug)" }
+      }
+    }
+  }
+}
 ```
 
-Render an image with `sh SKILL_DIR/scripts/stately-check render CHART.mmd`
-when the user asks for one. When the user asks to see the path interactively
-and a Stately connection is signed in, save the flow with
-`save_stately_models` as an estimated model and open it with
-`open_stately_editor`, passing the sequence's events as a `session.highlights`
-scenario. A diagram never replaces the numbered sequence.
+When the user asks to see the path on the diagram and a Stately connection is
+signed in, save the flow with `save_stately_models` as an estimated model and
+open it with `open_stately_editor`, passing the sequence's events as a
+`session.highlights` scenario. Without a connection, give the config itself so
+the user can import it. A diagram never replaces the numbered sequence.
+
+A comment posted to a pull request carries the Stately link and, beside it, the
+same flow as a Mermaid `stateDiagram-v2`, because reviewers may lack access to
+the project and GitHub renders Mermaid inline. Mark the bad state with
+`classDef breaks fill:#fdd,stroke:#c00` and `class <state> breaks`.
 
 Then each question in the same format, with the unconfirmed step marked
 `assumed`. Questions are part of the review: a reviewer can confirm one step
@@ -177,7 +187,7 @@ one line each.
 
 When posting to a PR, post each finding and question as an inline comment on
 its acting line or its introducing diff line, with the sequence, the test
-sketch, and the diagram when there is one. Label questions as questions. Ask before posting; a
+sketch, and the diagram link plus its Mermaid when there is one. Label questions as questions. Ask before posting; a
 review comment is outward-facing.
 
 ## Make it explicit

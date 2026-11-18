@@ -178,6 +178,19 @@ export function parseCheckResult(input) {
         `stuttering: ${path.id}`,
       );
   }
+  if (input.uncitedConditions !== undefined)
+    requireValue(
+      Array.isArray(input.uncitedConditions) &&
+        input.uncitedConditions.every(
+          (item) =>
+            record(item) &&
+            string(item.edgeId) &&
+            string(item.eventType) &&
+            string(item.source) &&
+            (item.guard === undefined || string(item.guard)),
+        ),
+      'uncited conditions',
+    );
   if (input.projection !== undefined) {
     requireValue(
       record(input.projection) &&

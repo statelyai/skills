@@ -12,22 +12,8 @@
       "description": "Hosted Stately MCP server, the Stately skill, and the opt-in Apply channel for Claude Code.",
       "skills": [
         "./skills/stately",
-        "./skills/xstate-v5"
-      ]
-    },
-    {
-      "name": "stately-agent",
-      "source": "./plugins/stately-agent",
-      "description": "Skills for @statelyai/agent: verify existing code in place against a model, convert a loop to a machine, build or generate a machine, add traces and evals, and improve a policy from traces (experimental).",
-      "skills": [
-        "./skills/graph-engineering",
-        "./skills/verify-in-place",
-        "./skills/loop-to-machine",
-        "./skills/build-machine",
-        "./skills/generate-machine",
-        "./skills/add-traces",
-        "./skills/add-evals",
-        "./skills/improve-machine"
+        "./skills/xstate-v5",
+        "./skills/xstate-v6"
       ]
     }
   ]
