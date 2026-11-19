@@ -35,6 +35,8 @@ The check records the code's side effects without editing it.
 | It receives an AI SDK model | `recorder.model(standIn)` (no name argument), plus the AI SDK recipe below so retries are attributed |
 | It builds an AI SDK model inline, or passes module-level tools to `generateText` | The AI SDK recipe below |
 | Other side effects are module imports with no injection point | Module mocks in the test (`vi.mock`) that wrap the real functions with `recorder.fn` |
+| A framework takes an AI SDK model through its own adapter (openai-agents `aisdk(model)`) | `recorder.model(standIn)` passed to that adapter and set as the framework's default model |
+| It does its work when imported (calls `main()`, reads stdin, calls `process.exit`) | Mock stdin (`node:readline`) and `process.exit` before a dynamic `import()` per scenario; keep seam state on `globalThis` if the test calls `vi.resetModules()` |
 
 **AI SDK code.** Mock `"ai"` with `recordAiSdk`: each `generateText` and `streamText` call runs on the real AI SDK with the seam's model in place of the code's, and its tools wrapped with `recorder.tools`. The code's own tool loop runs, and the provider needs no mock:
 
@@ -83,7 +85,7 @@ export const refundModel = setupAgent({
 - One named actor per unit of work, invoked by `src`. Never inline actor logic in `invoke.src`: `checkConformance` rejects it, because it would run.
 - A person's answer is an event the model waits for in an idle state.
 - Each rule is a state or an inline guard: approval is the only way into the effect state, a cap is a counter checked in the transition that would exceed it.
-- Import the code's constants (thresholds, caps) instead of copying them, so the model follows a change to them. When the code inlines a literal, copy it and add a test that reads the source file and fails when the literal changes.
+- Import the code's constants (thresholds, caps) instead of copying them, so the model follows a change to them. When the code inlines a literal, can't be imported without running, or takes the value from a dependency that doesn't export it, copy it and add a test that reads the source file (or the dependency's built file) and fails when the literal changes.
 - The `stately` skill can draft the model from the code. Review the draft against the code line by line: the proofs hold for the model only.
 
 ## 4. Proofs
@@ -150,7 +152,7 @@ const report = await checkConformance(refundModel, {
 expect(report.deviation).toBeUndefined();
 ```
 
-- Give every model actor an entry. `observes` names the observation kind it consumes; omit it for work the recording cannot see, and list those actors in the hand-back (`report.unobserved`).
+- Give every model actor an entry. From alpha.42 the options are typed from the model: `actors` keys are its actor srcs, `observes` is an observation kind, and `observation` and `input` are narrowed to match, so use no `as never`. An options object built outside the call needs `as const` on its `observes` values. An `output` the actor's output schema rejects is an `invalid-output` deviation, and an event payload the event schema rejects is `invalid-event`. `observes` names the observation kind it consumes; omit it for work the recording cannot see, and list those actors in the hand-back (`report.unobserved`).
 - `matches` compares the actor's input with the observation. Compare every argument that identifies the work (the order and the amount refunded, the agent called), not only one: a refund to the wrong order with the right amount must deviate.
 - When an actor's output carries state the recording does not show (a queue, a stack), build it in `output` from the model's own `input` plus the observation.
 - `error` returns a value to fail the actor, for calls that threw in the recording.
