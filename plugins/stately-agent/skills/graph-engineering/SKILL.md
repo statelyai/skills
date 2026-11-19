@@ -13,7 +13,7 @@ Four steps, in order, each needing the one before it. Step 0 is optional, for ex
 
 | Step | Skill | Done when |
 | --- | --- | --- |
-| 0. Verify in place (existing code that stays as it is) | `verify-in-place` | A model of the code, its rules proved complete with a non-vacuity check, every recorded run conforming or deviating with a confirmed, pinned finding, coverage gaps listed, and one seeded regression caught. The code is unchanged |
+| 0. Verify in place (existing code that stays as it is) | `verify-in-place` | A model of the code, its rules proved complete with a non-vacuity check, every recorded run conforming or deviating with a confirmed, pinned finding, coverage gaps listed, and one seeded regression caught. The code is unchanged, or changed only by a seam commit the user approved |
 | 1. Make it a state machine | `loop-to-machine` (existing code), `build-machine` (from scratch, TypeScript), or `generate-machine` (from scratch, when the spec fits JSON) | Rules are guards and the sentinel is unreachable (`canReach`). From existing code: the parity report has no unreviewed regressions. From scratch: every invariant is proved complete or listed as not proved, or every `verifyAgentConfig` gate passes |
 | 2. Add traces | `add-traces` | Every run leaves a stamped log thread that replays to its final state |
 | 3. Add evals | `add-evals` | Evals per state at the cheapest level, an objective, baseline numbers per split |

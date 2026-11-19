@@ -32,7 +32,7 @@ The check records the code's side effects without editing it.
 | --- | --- |
 | Side effects go through one object or injected functions | `recorder.fn(name, fn)` around each function |
 | It calls an SDK client it receives | `recorder.client(name, client, { methods })` |
-| It receives an AI SDK model | `recorder.model(standIn)` (no name argument) |
+| It receives an AI SDK model | `recorder.model(standIn)` (no name argument), plus the AI SDK recipe below so retries are attributed |
 | It builds an AI SDK model inline, or passes module-level tools to `generateText` | The AI SDK recipe below |
 | Other side effects are module imports with no injection point | Module mocks in the test (`vi.mock`) that wrap the real functions with `recorder.fn` |
 
@@ -56,9 +56,10 @@ vi.mock("ai", async (importOriginal) => {
 - A call while `currentSeam()` returns `undefined` throws, so no test reaches a real provider.
 - A tool with `execute` runs inside the `generateText` call, before the loop sees the result. Read the loop with that order, not line by line: a check the loop makes after `generateText` returns comes after the tool already ran.
 - `recorder.model` records each provider attempt, and `effect.call` counts attempts. `recordAiSdk` stamps each attempt with `aiSdkCall`, the `generateText` call it belongs to: attempts with the same `aiSdkCall` are one call the code made (its tool-loop steps and the SDK's retries). Count the code's calls by `aiSdkCall`.
-- A failed attempt followed by the same request has `retriedBy`. If the `retriedBy` attempt has the same `aiSdkCall`, the SDK retried it: skip it in the mapping. If it has a different `aiSdkCall`, the code resent it: keep it, so the model checks the code's retry path and call limit. An attempt with no `aiSdkCall` was not routed through `recordAiSdk`, so who resent it is unknown: keep it.
+- A failed attempt followed by the same request has `retriedBy`. If the `retriedBy` attempt has the same `aiSdkCall`, the SDK retried it: skip it in the mapping. If it has a different `aiSdkCall`, the code resent it: keep it, so the model checks the code's retry path and call limit. An attempt with no `aiSdkCall` was not routed through `recordAiSdk`, so who resent it is unknown: keep it, and list retry attribution as a coverage gap in the hand-back.
+- Code that receives its model still calls `generateText`: mock `"ai"` with `recordAiSdk` and leave `model` out of the seam. The injected `recorder.model` wrapper is then indexed by call, so its SDK retries are skipped like any other.
 
-If none of these reach a side effect, the only edit allowed is extracting a seam (an `effects` object passed in). Ask the user before making it, and change nothing else.
+If none of these reach a side effect, the only edit allowed is extracting a seam (an `effects` object passed in). Ask the user before making it, make it its own commit, and change nothing else. The hand-back then names that commit as the one change to the code. Without the user's approval, stop and report which side effects no seam reaches.
 
 ## 3. The model file
 
@@ -110,12 +111,13 @@ const toObservations = (recording: Recording) =>
       case "decide": return [{ kind: "decision", decision: effect.result as Decision }];
       case "requestApproval": return [{ kind: "approval", approved: effect.result as boolean, amount: (effect.args as [{ amount: number }])[0].amount }];
       case "issueRefund": return [{ kind: "refund", ...(effect.args as [{ orderId: string; amount: number }])[0] }];
-      default: return [];
+      default: return [{ kind: `unmapped:${effect.name}` }]; // a call the mapping does not know deviates
     }
   });
 ```
 
 - The mapping reads only what each call shows: its name, arguments, and result.
+- Never drop a call the mapping does not know. Map it to an observation no actor consumes, so a run that makes a new call deviates instead of conforming without it. Drop only effects the model has no step for, and list them in the hand-back.
 - Never decide in the mapping what the code should do next, and never re-implement the code's logic there. A mapping that encodes the rules makes every run conform.
 
 ## 7. Conformance test
@@ -140,6 +142,8 @@ const report = await checkConformance(refundModel, {
   },
   output: {
     observes: "returned",
+    // Here the code returns a string ("refunded") and the model's output is { outcome: "refunded" }.
+    // Compare the same values: unwrap whichever side wraps them, or compare whole objects by value.
     matches: ({ output, observation }) => (output as { outcome: string }).outcome === observation.outcome,
   },
 });
@@ -165,10 +169,10 @@ Prove the check catches a real regression: copy the code to a throwaway file, in
 
 ## Hand back
 
-- Files added: the model, proofs, scenarios, mapping, and conformance test. The code under check is unchanged (`git diff` on it is empty).
+- Files added: the model, proofs, scenarios, mapping, and conformance test. The code under check is unchanged (`git diff` on it is empty), or changed only by the seam commit the user approved, named here.
 - A table: each rule, proved or not (with depth), and how many recorded runs exercised it.
 - Unobserved actors, other unchecked values (event payloads and return values no `matches` compares, arguments no `matches` compares), and coverage gaps, with what would close them.
 - Findings: each pinned deviation, the bug it shows in the code, and the scenarios that show it.
 - The bite check: the bug, the scenario that caught it, and the deviation.
-- The claim, in these words: the model is proved, and these recorded runs conform. When some runs deviate: the model is proved; N of M recorded runs conform; each other run deviates at the step named, with the finding it shows.
-- Offer migration only if the user wants the rules enforced at runtime: hand off to `loop-to-machine`. The model and proofs carry over.
+- The claim, in these words, only when every rule's proof is `reachable: false` with `complete: true`: the model is proved, and these recorded runs conform. When some runs deviate: the model is proved; N of M recorded runs conform; each other run deviates at the step named, with the finding it shows. When a proof finds a witness or does not complete, do not say the model is proved: name each rule that is not proved, with the witness or the reason the search stopped, and claim only the rules that are.
+- Offer migration only if the user wants the rules enforced at runtime: hand off to `loop-to-machine`. The model is the target for its carves, not a finished machine: `loop-to-machine` wraps the workflow first, and each carved phase needs its own proofs.
