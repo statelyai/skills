@@ -44,10 +44,11 @@ Choose rules from the bug kinds in
 [state-bugs.md](state-bugs.md), not only from the requested property: for each
 kind that applies to the flow (stuck states, event order, check then act,
 stale copies, retries and timers, error paths), add a rule or say why it does
-not apply. While reading the code, record state bugs in the requested flow
-that the model cannot express (a check skipped in one status, a status shown
-differently in two places) and report them next to the checker results as
-source findings, labeled as not model-checked. Leave out behavior that a code
+not apply. Build the model from the source sweep's lead ledger (see
+[Check invariants](../SKILL.md#check-invariants)) and report every lead. State
+bugs the model cannot express (a check skipped in one status, a status shown
+differently in two places) are source findings next to the checker results,
+labeled as not model-checked. Leave out behavior that a code
 comment or test marks as intended, latency quirks, and code outside the flow.
 
 Cite the code for every guard and condition: a `\* path:line` comment on the

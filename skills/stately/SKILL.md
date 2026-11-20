@@ -134,6 +134,16 @@ Do not hand off to another skill. If the host cannot run commands, call
 graph with `save_stately_check_result`. Otherwise prepare the model and rules,
 mark checking as not run, and provide the command below.
 
+Before modeling, sweep the flow's source with the lead ledger in
+[state-bugs.md](references/state-bugs.md#the-lead-ledger). Read every
+entrypoint of the flow and every implementation that shares its contract
+(each class, transport, or variant behind the same interface), not only the
+first one found. Check each lead against every kind and absence check in that
+file, including each exit, error path, and cancellation or disposal point
+between an `await`, callback, or message and the next effect. Write the ledger
+to `leads.md` in the task-owned directory. The model and rules come from these
+leads; the checker confirms leads, it does not replace the sweep.
+
 1. Check the saved model, not a parallel file. Select its connection as above,
    then read its graph, revision, and link with
    `read_stately_model({ machineId })`. Alternatively, save a new
@@ -151,8 +161,9 @@ mark checking as not run, and provide the command below.
    choose rules from the bug kinds in
    [state-bugs.md](references/state-bugs.md); see
    [model-authoring.md](references/model-authoring.md#discover-and-model-the-actual-behavior).
-   Report state bugs in the flow that the model cannot express as source
-   findings next to the checker results. Read [native-checking.md](references/native-checking.md).
+   Give every guard and condition a `path:line` citation. A check that the code
+   lacks (a cancellation, closed, or ownership test after an `await`) is a
+   lead, never a model guard. Model each lead the model can express. Read [native-checking.md](references/native-checking.md).
    Do useful reversible work without demanding a second confirmation.
 2. Run the owned entrypoint with separately passed arguments:
 
@@ -228,6 +239,11 @@ mark checking as not run, and provide the command below.
    Render `chart.mmd` or an SVG with
    `sh SKILL_DIR/scripts/stately-check render RUN_DIR/chart.mmd` only when the
    user asks for it ([render.md](references/render.md)).
+7. Report every lead in the ledger as a checker finding (rule and trace), a
+   source finding (not model-checked, with its `path:line` sequence), a
+   question, or cleared with the line that blocks it. Never drop a lead
+   because the model does not cover it, and never stop at the model's
+   component when the sweep found leads in another implementation.
 
 If the connected release lacks `save_stately_check_result`, say so; the checker
 still runs, and `save_stately_models` can store the navigable graph without
