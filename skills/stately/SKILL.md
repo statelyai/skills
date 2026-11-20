@@ -144,6 +144,20 @@ between an `await`, callback, or message and the next effect. Write the ledger
 to `leads.md` in the task-owned directory. The model and rules come from these
 leads; the checker confirms leads, it does not replace the sweep.
 
+In a check, clear a lead only with a line in the flow's own code that blocks
+the sequence on every path through the flow's public contract. A caller that
+ignores or recovers from the bug does not clear it: report the bug with the
+caller's mitigation and its `path:line`. Never clear by reading a lead that
+depends on an order or interleaving (one callback runs before another, a
+handler finishes before the next attempt starts, a close arrives only once).
+Model it and let the checker decide.
+
+Every lead that depends on an order or interleaving goes into a checked model.
+A source finding is for a bug the model cannot express, not for an ordering
+lead that was left out of the model. A model of one component covers none of
+the leads in another. A lead from a helper or subagent stays a lead until you
+re-trace it from its cited lines.
+
 1. Check the saved model, not a parallel file. Select its connection as above,
    then read its graph, revision, and link with
    `read_stately_model({ machineId })`. Alternatively, save a new
@@ -163,8 +177,16 @@ leads; the checker confirms leads, it does not replace the sweep.
    [model-authoring.md](references/model-authoring.md#discover-and-model-the-actual-behavior).
    Give every guard and condition a `path:line` citation. A check that the code
    lacks (a cancellation, closed, or ownership test after an `await`) is a
-   lead, never a model guard. Model each lead the model can express. Read [native-checking.md](references/native-checking.md).
-   Do useful reversible work without demanding a second confirmation.
+   lead, never a model guard. Model each lead the model can express. Give
+   each attempt of a retry, reconnect, or timeout its own instance and state,
+   including work that keeps running after a timeout cancels the wrapper
+   around it. Group the ordering leads by component (class, service, module,
+   or process) and build a model for each group, or one model that includes
+   every group. Several implementations behind one contract are separate
+   components, or one model with the implementation as a parameter. Run step 2
+   on every model before step 6. When the budget cannot cover every group, say
+   so and report that group's ordering leads as questions. Read
+   [native-checking.md](references/native-checking.md). Do useful reversible work without demanding a second confirmation.
 2. Run the owned entrypoint with separately passed arguments:
 
    ```sh
@@ -240,8 +262,11 @@ leads; the checker confirms leads, it does not replace the sweep.
    `sh SKILL_DIR/scripts/stately-check render RUN_DIR/chart.mmd` only when the
    user asks for it ([render.md](references/render.md)).
 7. Report every lead in the ledger as a checker finding (rule and trace), a
-   source finding (not model-checked, with its `path:line` sequence), a
-   question, or cleared with the line that blocks it. Never drop a lead
+   source finding (a bug the model cannot express, with the full `path:line`
+   sequence you read), a question, or cleared with the line that blocks it.
+   An ordering lead with no checker trace or replay is a question. A lead with
+   neither a trace, a replay, nor a complete read sequence is a question, with
+   its sequence and the step you could not confirm. Never drop a lead
    because the model does not cover it, and never stop at the model's
    component when the sweep found leads in another implementation.
 
