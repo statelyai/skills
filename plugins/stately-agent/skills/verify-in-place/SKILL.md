@@ -35,8 +35,8 @@ The check records the code's side effects without editing it.
 | It receives an AI SDK model | `recorder.model(standIn)` (no name argument), plus the AI SDK recipe below so retries are attributed |
 | It builds an AI SDK model inline, or passes module-level tools to `generateText` | The AI SDK recipe below |
 | Other side effects are module imports with no injection point | Module mocks in the test (`vi.mock`) that wrap the real functions with `recorder.fn` |
-| A framework takes an AI SDK model through its own adapter (openai-agents `aisdk(model)`) | `recorder.model(standIn)` passed to that adapter and set as the framework's default model |
-| It does its work when imported (calls `main()`, reads stdin, calls `process.exit`) | Mock stdin (`node:readline`) and `process.exit` before a dynamic `import()` per scenario; keep seam state on `globalThis` if the test calls `vi.resetModules()` |
+| A framework takes an AI SDK model through its own adapter (openai-agents `aisdk(model)`) | `recorder.model(standIn)` passed to that adapter and set as the framework's default model. Every agent the scenario builds must resolve to the stand-in: override each agent's own `model` with it, and mock the provider packages (`vi.mock("@ai-sdk/openai")`) to throw, so a call to any other model fails the scenario |
+| It does its work when imported (calls `main()`, reads stdin, calls `process.exit`) | Mock stdin (`node:readline`) and `process.exit`, call `vi.resetModules()`, then a dynamic `import()` per scenario (a cached module does not run `main()` again); keep seam state on `globalThis` so it survives the reset |
 
 **AI SDK code.** Mock `"ai"` with `recordAiSdk`: each `generateText` and `streamText` call runs on the real AI SDK with the seam's model in place of the code's, and its tools wrapped with `recorder.tools`. The code's own tool loop runs, and the provider needs no mock:
 
@@ -68,17 +68,21 @@ If none of these reach a side effect, the only edit allowed is extracting a seam
 Write `<name>.model.ts` beside the code: a `setupAgent` machine with the code's control flow.
 
 ```ts
-const placeholder = <T>(output: z.ZodType<T>) =>
+const placeholder = <I, O>(input: z.ZodType<I>, output: z.ZodType<O>) =>
   createAsyncLogic({
-    schemas: { output },
-    run: (): Promise<T> => Promise.reject(new Error("model only: answered from a recording")),
+    schemas: { input, output },
+    run: (): Promise<O> => Promise.reject(new Error("model only: answered from a recording")),
   });
 
 export const refundModel = setupAgent({
   input: z.object({ orderId: z.string() }),
   context: z.object({ /* what the control flow reads */ }),
   events: { APPROVE: {}, REJECT: {} },
-  actors: { lookupOrder: placeholder(orderSchema), decide: placeholder(decisionSchema), issueRefund: placeholder(z.undefined()) },
+  actors: {
+    lookupOrder: placeholder(z.object({ orderId: z.string() }), orderSchema),
+    decide: placeholder(z.object({ order: orderSchema }), decisionSchema),
+    issueRefund: placeholder(z.object({ orderId: z.string(), amount: z.number() }), z.undefined()),
+  },
 }).createMachine({ /* states */ });
 ```
 
@@ -152,7 +156,7 @@ const report = await checkConformance(refundModel, {
 expect(report.deviation).toBeUndefined();
 ```
 
-- Give every model actor an entry. From alpha.42 the options are typed from the model: `actors` keys are its actor srcs, `observes` is an observation kind, and `observation` and `input` are narrowed to match, so use no `as never`. An options object built outside the call needs `as const` on its `observes` values. An `output` the actor's output schema rejects is an `invalid-output` deviation, and an event payload the event schema rejects is `invalid-event`. `observes` names the observation kind it consumes; omit it for work the recording cannot see, and list those actors in the hand-back (`report.unobserved`).
+- Give every model actor an entry. From alpha.42 the options are typed from the model: `actors` keys are its actor srcs, `observes` is an observation kind, and `observation` and `input` are narrowed to match, so use no `as never`. `input` takes the actor's input schema, so give each placeholder one; without it `input` is `unknown` and the callback needs a type annotation. An options object built outside the call needs `as const` on its `observes` values. An `output` the actor's output schema rejects is an `invalid-output` deviation, and an event payload the event schema rejects is `invalid-event`. `observes` names the observation kind it consumes; omit it for work the recording cannot see, and list those actors in the hand-back (`report.unobserved`).
 - `matches` compares the actor's input with the observation. Compare every argument that identifies the work (the order and the amount refunded, the agent called), not only one: a refund to the wrong order with the right amount must deviate.
 - When an actor's output carries state the recording does not show (a queue, a stack), build it in `output` from the model's own `input` plus the observation.
 - `error` returns a value to fail the actor, for calls that threw in the recording.
