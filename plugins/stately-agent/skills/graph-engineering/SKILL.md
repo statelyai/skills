@@ -9,10 +9,11 @@ metadata:
 
 > Targets `@statelyai/agent` 2.0 alpha, as on the [`next` branch](https://github.com/statelyai/agent/tree/next). APIs change between alphas: when a call here does not match the installed package, check `node_modules/@statelyai/agent/CHANGELOG.md`.
 
-Four steps, in order. Each one needs the one before it.
+Four steps, in order, each needing the one before it. Step 0 is optional, for existing code that stays as it is.
 
 | Step | Skill | Done when |
 | --- | --- | --- |
+| 0. Verify in place (existing code that stays as it is) | `verify-in-place` | A model of the code, its rules proved complete with a non-vacuity check, every recorded run conforming or deviating with a confirmed, pinned finding, coverage gaps listed, and one seeded regression caught. The code is unchanged, or changed only by a seam commit the user approved |
 | 1. Make it a state machine | `loop-to-machine` (existing code), `build-machine` (from scratch, TypeScript), or `generate-machine` (from scratch, when the spec fits JSON) | Rules are guards and the sentinel is unreachable (`canReach`). From existing code: the parity report has no unreviewed regressions. From scratch: every invariant is proved complete or listed as not proved, or every `verifyAgentConfig` gate passes |
 | 2. Add traces | `add-traces` | Every run leaves a stamped log thread that replays to its final state |
 | 3. Add evals | `add-evals` | Evals per state at the cheapest level, an objective, baseline numbers per split |
@@ -20,7 +21,9 @@ Four steps, in order. Each one needs the one before it.
 
 ## Find where the project is
 
-Check in this order and start at the first step that is not done:
+When the user wants guarantees about existing code without changing it, start at step 0 and stop there unless they ask for more. Migrating after step 0 is step 1 with `loop-to-machine`; the model and its proofs carry over.
+
+Otherwise check in this order and start at the first step that is not done:
 
 1. Does the code path production actually runs go through a machine (`setupAgent`, `createMachine`, an `AgentWorkflowConfig`)? Follow the route or entry point to the model call; a machine that nothing calls does not count. If the path is a loop or ad-hoc code, step 1.
 2. Do runs persist to an event log store with a declared machine `version` and a `metadata` stamp? If not, step 2.
