@@ -86,18 +86,18 @@ conditions, safe coarsening, and report interpretation. A view may export
 rather than TLA+ identifiers. Adapt this example to every actual state/action:
 
 ```js
-export const title = "Payment cancellation";
+export const title = 'Payment cancellation';
 const phases = {
-  ready: "Ready",
-  paying: "Payment pending",
-  cancelled: "Cancelled",
-  paid: "Paid",
+  ready: 'Ready',
+  paying: 'Payment pending',
+  cancelled: 'Cancelled',
+  paid: 'Paid',
 };
 const actions = {
-  StartPayment: "You start checkout",
-  Cancel: "You cancel checkout",
-  ConfirmPayment: "The provider confirms payment",
-  Done: "Checkout stays finished",
+  StartPayment: 'You start checkout',
+  Cancel: 'You cancel checkout',
+  ConfirmPayment: 'The provider confirms payment',
+  Done: 'Checkout stays finished',
 };
 export const state = ({ phase }) => phases[phase];
 export const step = (action) => actions[action];
@@ -224,7 +224,15 @@ Example provenance (replace every value with the actual run):
 ```json
 {
   "version": "actual TLC version and revision",
-  "command": ["java", "-jar", "tla2tools.jar", "-dumpTrace", "json", "trace.json", "Checkout.tla"],
+  "command": [
+    "java",
+    "-jar",
+    "tla2tools.jar",
+    "-dumpTrace",
+    "json",
+    "trace.json",
+    "Checkout.tla"
+  ],
   "bounds": { "constants": "exact constants/constraints from this run" },
   "assumptions": ["reviewed model assumptions and omissions"],
   "rule": { "kind": "invariant", "name": "CancelledNeverCharged" }
