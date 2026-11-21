@@ -7,16 +7,16 @@ description: Generate a diagram of a process or flow in Stately, model a flow as
 
 Common requests and their workflows:
 
-| Request | Section |
-| --- | --- |
-| "use Stately to generate a diagram of ..." | [Generate a diagram](#generate-a-diagram) |
-| "model this flow" | [Model a flow](#model-a-flow) |
-| "show me the happy path" or "play through this scenario" | [Present scenarios](#present-scenarios) |
-| "check that this protocol follows these invariants" | [Check invariants](#check-invariants) |
-| "find all of the implicit state machines in my app" | [Find implicit state machines](#find-implicit-state-machines) |
-| "make these flags explicit" or "turn this into a state machine" | [Make a machine explicit](#make-a-machine-explicit) |
-| "check my fix" or "does this change fix the bug" | [Check a fix](#check-a-fix) |
-| "review this PR for state bugs" | [Review a change for state bugs](#review-a-change-for-state-bugs) |
+| Request                                                         | Section                                                           |
+| --------------------------------------------------------------- | ----------------------------------------------------------------- |
+| "use Stately to generate a diagram of ..."                      | [Generate a diagram](#generate-a-diagram)                         |
+| "model this flow"                                               | [Model a flow](#model-a-flow)                                     |
+| "show me the happy path" or "play through this scenario"        | [Present scenarios](#present-scenarios)                           |
+| "check that this protocol follows these invariants"             | [Check invariants](#check-invariants)                             |
+| "find all of the implicit state machines in my app"             | [Find implicit state machines](#find-implicit-state-machines)     |
+| "make these flags explicit" or "turn this into a state machine" | [Make a machine explicit](#make-a-machine-explicit)               |
+| "check my fix" or "does this change fix the bug"                | [Check a fix](#check-a-fix)                                       |
+| "review this PR for state bugs"                                 | [Review a change for state bugs](#review-a-change-for-state-bugs) |
 
 Rules that apply everywhere: preserve the application's framework and test
 runner. Finding, checking, and reviewing never require XState or pstack and
@@ -227,6 +227,7 @@ re-trace it from its cited lines.
    The first TLA+ run downloads a Java runtime and TLC; see
    [formal-checking.md](references/formal-checking.md) for runtime setup,
    projections, and timeouts.
+
 3. Read `compact-report.md` first, then `report.md`, `check-report.json`, and
    `check-result.json`; full evidence stays authoritative. Treat each rule's
    `holds`, `broken`, or `not-checked` independently. A deadlock result and a
