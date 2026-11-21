@@ -240,6 +240,106 @@ definition in the spec text, so pass run directories that contain
 exit code is `1` when any rule is broken in the after run, `0` otherwise, and
 `2` when the runs cannot be compared.
 
+## Checking recorded runs
+
+```sh
+sh SKILL_DIR/scripts/stately-check conform Flow.json --rules Flow.rules.json --trace runs/a.jsonl [--trace runs/b.jsonl] --out NEW_DIR [--json]
+```
+
+`conform` checks recorded application runs against the same model and rules
+file that `check` uses. A run conforms when some path of the model matches
+every line of its trace. A run that does not fit points at one of three
+causes, in this order: the log call is in the wrong place or logs the wrong
+data, the model or rules file is wrong, or the application is wrong.
+
+A trace is a JSON Lines file. The first line is a header:
+
+```jsonl
+{"format":"stately.trace.v1","name":"wrong password then sign in","source":"test/login.test.ts:12","init":{"tries":0}}
+{"event":{"type":"SUBMIT","ok":false},"expect":{"in":["signedOut"],"context":{"tries":1},"ignored":false}}
+{"event":{"type":"SUBMIT","ok":true},"expect":{"in":["signedIn"]},"at":"src/login.ts:51"}
+{"event":{"type":"SUBMIT","ok":true},"expect":{"ignored":true}}
+{"expect":{"when":"tries == 1"}}
+```
+
+| Header key | Value |
+| --- | --- |
+| `format` | `"stately.trace.v1"`. Required. |
+| `name`, `source` | Copied into the report and the application checks. |
+| `init` | A full or partial initial context. It selects among the rules file's `init` entries. |
+| `actors` | Actor name to `{ "region": state, "events": "TEMPLATE_{type}" }`. See below. |
+
+Each later line has an `event` (`type` plus payload fields), an `expect`, or
+both. A line with only `expect` checks state without a step.
+
+| Line key | Value |
+| --- | --- |
+| `expect.in` | States that must be active: node ids, state paths, or unique names, as in `in()`. |
+| `expect.context` | A partial context. Only variables with a domain in the rules file. |
+| `expect.when` | A rules expression over the context and `in()`. |
+| `expect.ignored` | `true`: the event took no transition in the app. `false`: it took one. A targetless transition with actions counts as taken. |
+| `actor` | The actor the line belongs to. Required when the header has `actors`. |
+| `seq` | An integer. When one line has it, every line needs it, and lines are checked in `seq` order. |
+| `at` | The `path:line` that wrote the line, shown in the report. |
+
+Write one line per operation the model's events stand for, at the code that
+commits the step (after the `await`, inside the callback), so the line marks
+when the step happened.
+
+The payload comes from the trace. A payload that the rules file's `events`
+does not list is a warning, because `check` never explored it. So is an event
+type with no transition anywhere in the model.
+
+### Several actors
+
+One trace can carry several actors checked against one model, such as two
+tabs, a retry that overlaps the first attempt, or a client and a server:
+
+```jsonl
+{"format":"stately.trace.v1","name":"two tabs submit","actors":{"tab1":{"region":"tab1","events":"TAB1_{type}"},"tab2":{"region":"tab2","events":"TAB2_{type}"}}}
+{"actor":"tab1","event":{"type":"SUBMIT"},"expect":{"in":["pending"]}}
+{"actor":"tab2","event":{"type":"SUBMIT"},"expect":{"in":["pending"]}}
+{"actor":"tab1","event":{"type":"SAVED"},"expect":{"context":{"orders":1}}}
+{"actor":"tab2","event":{"type":"SAVED"},"expect":{"context":{"orders":2}}}
+```
+
+- `region` makes the actor's `expect.in` resolve inside that state, so the
+  trace uses the app's own state names.
+- `events` renames the actor's event types to the model's. `{type}` is the
+  logged type.
+- `expect.context` and `expect.when` read the whole model's context.
+- Line order is the interleaving. Actors that share no state belong in
+  separate models and separate `conform` runs.
+
+### Verdicts and outputs
+
+| Verdict | Meaning |
+| --- | --- |
+| `conforms` | A model path matches every line without an undefined guard or assignment. |
+| `diverges` | No model path matches a line. The report names the line, the failed `expect` field (`ignored`, `in`, `context`, `when`, `init`, or `out-of-domain`), the model states before the line, and the states the line could reach. |
+| `inconclusive` | The run matches only through guards or assignments the rules file does not define, an initial eventless transition reads an undefined guard, a line fails after an undefined assignment, or more model states match than `--max-frontier` (default 1000). |
+
+A guard with no expression is case-split, as in `check`. The context stays
+exact, so a mismatch on every branch is still a divergence. An assignment with
+no expression makes the context unknown: `expect.context` and `expect.when`
+cannot fail after it, and a line that no model state matches is inconclusive
+instead of a divergence, because later guards read stale values.
+
+The output directory must be new or empty. It contains:
+
+- `conform-result.json` (`stately.conform-result.v1`): the verdict, divergence,
+  warnings, and witness path (edge ids per line) of each trace, with SHA-256
+  hashes of every input.
+- `conform-report.md`: the readable report.
+- `app-checks.json`: one record per trace for
+  `stately-check record-app-checks`. `conforms` is `passed`, `diverges` is
+  `failed`, and `inconclusive` is `not-run`.
+- `run.json` and `inputs/`: run metadata and copies of the model, rules file,
+  and traces.
+
+The exit code is `0` when every trace conforms, `1` when any trace diverges,
+and `2` when any trace is inconclusive or an input is invalid.
+
 ## Limits
 
 - State is stored as explicit keys in memory. Models with a few hundred

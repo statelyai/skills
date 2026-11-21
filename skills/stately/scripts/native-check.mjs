@@ -611,34 +611,45 @@ export function uncitedConditions(model, citations) {
     }));
 }
 
+/**
+ * Resolves a state reference (node id, state path, unique key, or unique trailing path)
+ * to one native node id. With `within`, the reference resolves among that node and its
+ * descendants, and paths are relative to it.
+ */
+export function resolveStateReference(model, ref, owner, within) {
+  const base = within ? model.nodes.get(within) : undefined;
+  const nodes = [...model.nodes.values()].filter((node) => !base || node.path.slice(0, base.path.length).join('.') === base.path.join('.'));
+  const path = (node) => node.path.slice(base ? base.path.length : 0).join('.');
+  const found =
+    typeof ref === 'string' && ref
+      ? nodes.filter((node) => node.id === ref || path(node) === ref || node.key === ref || path(node).endsWith(`.${ref}`)).map((node) => node.id)
+      : [];
+  if (!found.length) {
+    const suffix = nodes.map((node) => node.id).filter((id) => id.endsWith(`.${ref}`));
+    const suggestions = (suffix.length ? suffix : nodes.map((node) => node.id)).slice(0, 3);
+    fail(`${owner}: unknown state reference ${JSON.stringify(ref)} in in(); use a node ID such as ${suggestions.join(', ')}`);
+  }
+  if (found.length > 1)
+    fail(`${owner}: ambiguous state reference ${JSON.stringify(ref)} in in(); use a unique node ID or state path: ${found.join(', ')}`);
+  return found[0];
+}
+
+/** Resolves every in() reference in `ast` into `references` (ref string to node id). */
+export function addStateReferences(model, references, ast, owner) {
+  if (!ast) return;
+  if (ast.call === 'in') {
+    if (ast.args.length !== 1 || typeof ast.args[0]?.lit !== 'string')
+      fail(`${owner}: in() needs one literal state name or node ID`);
+    const ref = ast.args[0].lit;
+    if (!references.has(ref)) references.set(ref, resolveStateReference(model, ref, owner));
+  }
+  for (const child of [ast.left, ast.right, ast.arg, ast.cond, ast.then, ast.otherwise]) addStateReferences(model, references, child, owner);
+  for (const arg of ast.args ?? []) addStateReferences(model, references, arg, owner);
+}
+
 function validateStateReferences(model, rules) {
-  const nodes = [...model.nodes.values()];
   const references = new Map();
-  const matches = (ref) => {
-    return nodes
-      .filter((node) => node.id === ref || node.path.join('.') === ref || node.key === ref || node.path.join('.').endsWith(`.${ref}`))
-      .map((node) => node.id);
-  };
-  const visit = (ast, owner) => {
-    if (!ast) return;
-    if (ast.call === 'in') {
-      if (ast.args.length !== 1 || typeof ast.args[0]?.lit !== 'string')
-        fail(`${owner}: in() needs one literal state name or node ID`);
-      const ref = ast.args[0].lit;
-      if (references.has(ref)) return;
-      const found = ref ? matches(ref) : [];
-      if (!found.length) {
-        const suffix = nodes.map((node) => node.id).filter((id) => id.endsWith(`.${ref}`));
-        const suggestions = (suffix.length ? suffix : nodes.map((node) => node.id)).slice(0, 3);
-        fail(`${owner}: unknown state reference ${JSON.stringify(ref)} in in(); use a node ID such as ${suggestions.join(', ')}`);
-      }
-      if (found.length > 1)
-        fail(`${owner}: ambiguous state reference ${JSON.stringify(ref)} in in(); use a unique node ID or state path: ${found.join(', ')}`);
-      references.set(ref, found[0]);
-    }
-    for (const child of [ast.left, ast.right, ast.arg, ast.cond, ast.then, ast.otherwise]) visit(child, owner);
-    for (const arg of ast.args ?? []) visit(arg, owner);
-  };
+  const visit = (ast, owner) => addStateReferences(model, references, ast, owner);
   for (const [name, ast] of Object.entries(rules.guards)) visit(ast, `guard ${name}`);
   for (const [name, assignments] of Object.entries(rules.actions))
     for (const [, ast] of assignments) visit(ast, `action ${name}`);
@@ -684,14 +695,14 @@ function loadXState() {
   fail(`xstate v6 (getMicrosteps) is required: ${errors.join('; ')}`);
 }
 
-class Unresolved extends Error {}
+export class Unresolved extends Error {}
 
 function ancestors(model, node) {
   const list = [];
   for (let current = node; current; current = model.nodes.get(current.parentId)) list.push(current);
   return list; // node first, root last
 }
-function activeSet(model, configuration) {
+export function activeSet(model, configuration) {
   const active = new Set();
   for (const id of configuration) for (const node of ancestors(model, model.nodes.get(id))) active.add(node.id);
   return active;
@@ -761,6 +772,7 @@ class Engine {
           this.diagnostics.unresolvedActions.add(name ?? '(inline code)');
           this.diagnostics.unresolvedEdges.add(ownerId);
           this.collector.unresolved = true;
+          this.collector.unknownContext = true;
         }
         continue;
       }
@@ -773,6 +785,7 @@ class Engine {
           this.diagnostics.unresolvedActions.add(`${name}: ${error.message}`);
           this.diagnostics.unresolvedEdges.add(ownerId);
           this.collector.unresolved = true;
+          this.collector.unknownContext = true;
         }
       }
       next = updated;
@@ -830,7 +843,7 @@ class Engine {
   /** Initial snapshots for one initial context (eventless transitions already settled). */
   initial(context) {
     this.current = [];
-    this.collector = { unresolved: false, wanted: new Set() };
+    this.collector = { unresolved: false, unknownContext: false, wanted: new Set() };
     let snapshot, steps;
     try {
       steps = this.xstate.getInitialMicrosteps(this.machine, context);
@@ -840,14 +853,23 @@ class Engine {
     }
     snapshot = steps.at(-1)[0];
     const edgeIds = steps.flatMap(([, , transitions]) => transitions.map((t) => t.meta?.edgeId).filter(Boolean));
-    return { snapshot, configuration: this.configurationOf(snapshot), context: snapshot.context, edgeIds, unresolved: this.collector.unresolved };
+    return {
+      snapshot,
+      configuration: this.configurationOf(snapshot),
+      context: snapshot.context,
+      edgeIds,
+      unresolved: this.collector.unresolved,
+      unknownContext: this.collector.unknownContext,
+      // Undefined guards read by initial eventless transitions; their false branch was taken.
+      wanted: [...this.collector.wanted],
+    };
   }
   /**
    * Macrostep results for one event from one snapshot: [{ snapshot, configuration,
    * context, edgeIds, unresolved }]. Guards without an expression are case-split by
    * rerunning with every requested assumption.
    */
-  step(state, eventType, payload) {
+  step(state, eventType, payload, { keepIgnored = false } = {}) {
     const results = [];
     const pending = [{}];
     const seenAssumptions = new Set();
@@ -857,7 +879,7 @@ class Engine {
       if (seenAssumptions.has(key)) continue;
       seenAssumptions.add(key);
       this.current = state.configuration;
-      this.collector = { unresolved: false, wanted: new Set() };
+      this.collector = { unresolved: false, unknownContext: false, wanted: new Set() };
       const event = { type: eventType, ...(payload ?? {}), ...(Object.keys(assume).length ? { '@assume': assume } : {}) };
       let microsteps;
       try {
@@ -876,13 +898,19 @@ class Engine {
       }
       const snapshot = microsteps.at(-1)?.[0] ?? state.snapshot;
       const edgeIds = microsteps.flatMap(([, , transitions]) => transitions.map((t) => t.meta?.edgeId).filter(Boolean));
-      if (!edgeIds.length && snapshot === state.snapshot) continue; // unhandled
+      if (!edgeIds.length && snapshot === state.snapshot) {
+        // Unhandled. Conformance keeps it so a trace can assert the event was ignored.
+        if (keepIgnored)
+          results.push({ snapshot, configuration: state.configuration, context: state.context, edgeIds, unresolved: this.collector.unresolved, unknownContext: this.collector.unknownContext, assume, ignored: true });
+        continue;
+      }
       results.push({
         snapshot,
         configuration: this.configurationOf(snapshot),
         context: snapshot.context,
         edgeIds,
         unresolved: this.collector.unresolved,
+        unknownContext: this.collector.unknownContext,
         assume,
       });
     }
@@ -894,7 +922,7 @@ class Engine {
 // Exploration and rule evaluation.
 // ---------------------------------------------------------------------------
 
-function inDomain(domains, context) {
+export function inDomain(domains, context) {
   for (const [name, domain] of Object.entries(domains)) {
     const value = context[name];
     if (domain.kind === 'int' && !(Number.isInteger(value) && value >= domain.min && value <= domain.max)) return false;
@@ -947,12 +975,13 @@ function components(byId, startIds, inside) {
 }
 
 /**
+ * Normalizes and validates a model and rules file and builds the engine. Shared by
+ * `check` and trace conformance so both step the model the same way.
  * `xstate` may be an already loaded XState v6 module (for example the cached copy from
  * `ensureXState` in toolchain.mjs, imported by the caller); without it the module is
  * resolved next to graph-tools or the skill.
  */
-export function check({ model: modelInput, rules: rulesInput, modelContent, rulesContent, modelPath = 'model.json', rulesPath = 'rules.json', xstate, limits }) {
-  const started = performance.now();
+export function prepare({ model: modelInput, rules: rulesInput, xstate, limits }) {
   const model = normalizeModel(modelInput);
   const rules = parseRules(rulesInput);
   // `limits` lets a host cap the run below what the rules file asks for.
@@ -981,6 +1010,12 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
     for (const name of Object.keys(rules.domains)) projected[name] = context[name];
     return projected;
   };
+  return { model, rules, diagnostics, engine, stateReferences, initialContexts, project, extracted };
+}
+
+export function check({ model: modelInput, rules: rulesInput, modelContent, rulesContent, modelPath = 'model.json', rulesPath = 'rules.json', xstate, limits }) {
+  const started = performance.now();
+  const { model, rules, diagnostics, engine, initialContexts, project, extracted } = prepare({ model: modelInput, rules: rulesInput, xstate, limits });
 
   const states = []; // { id, snapshot, configuration, context, initial, boundary, steps: [{to, edgeIds, event, unresolved}], unresolved }
   const index = new Map();

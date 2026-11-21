@@ -17,6 +17,7 @@ const writeJson = (path, value) =>
 const usage = `Usage:
   stately-check.mjs check MODEL.json --rules RULES.json [--scope FILE] [--out DIR] [--source FILE] [--offline] [--share-documents] [--compact] [--json]
   stately-check.mjs check SPEC.tla [--config FILE] [--view FILE] [--out DIR] [--source FILE] [--scope FILE] [--manifest FILE] [--timeout SECONDS] [--offline] [--share-documents] [--compact] [--json] (TLA+, opt-in)
+  stately-check.mjs conform MODEL.json --rules RULES.json --trace TRACE.jsonl [--trace ...] [--out DIR] [--max-frontier N] [--offline] [--json] (exit 1 when a trace diverges)
   stately-check.mjs compare BEFORE_RUN AFTER_RUN [--force] [--json] (exit 1 when a rule is still broken or broken by the fix)
   stately-check.mjs render CHART.mmd [--out FILE.svg] [--offline]
   stately-check.mjs import-trace TRACE SPEC CONFIG PROVENANCE_JSON RESULT_JSON
@@ -86,6 +87,13 @@ export async function main(args) {
         ? JSON.stringify(run, null, 2)
         : `${await readText(options.compact && run.compactReport ? run.compactReport : run.report)}\nArtifacts: ${run.output}\nFull scope report: ${run.report}${run.graph ? `\nNative view: ${run.graph}` : `\nNative view unavailable: ${run.nativeViewError}`}`,
     );
+    return run;
+  }
+  if (command === 'conform') {
+    const { runNativeConform, parseNativeConformArgs } = await import('./run-native-conform.mjs');
+    const options = parseNativeConformArgs(paths);
+    const run = await runNativeConform(options);
+    console.log(options.json ? JSON.stringify(run, null, 2) : `${await readText(run.report)}\nArtifacts: ${run.output}`);
     return run;
   }
   if (command === 'compare') {
@@ -268,6 +276,6 @@ if (isMain) {
       console.log(JSON.stringify({ ok: false, error: described }, null, 2));
     else console.error(described.message);
     process.exitCode =
-      isCheckCommand(process.argv[2]) || process.argv[2] === 'compare' ? 2 : 1;
+      isCheckCommand(process.argv[2]) || ['compare', 'conform'].includes(process.argv[2]) ? 2 : 1;
   }
 }
