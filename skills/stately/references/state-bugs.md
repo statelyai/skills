@@ -129,6 +129,16 @@ does not find them. Compare instead:
   path, a cached or no-op branch), list the effects of the existing path:
   cache invalidation on client and server, hooks, events, progress, metrics,
   audit, cleanup. Check each one on the new path.
+- **Suspension parity.** For each `await`, callback, or message whose
+  continuation writes shared state (a map entry, a handle, a cache, a status),
+  list every operation that can run while it is suspended: the same operation
+  started again, the last consumer or subscriber leaving, a reset or
+  clear-all, a reconnect or restart, a disconnect, and a new attempt. Check
+  the continuation against each one, and check the callbacks the suspended
+  work registered, which keep firing after their owner is replaced. Each
+  operation the continuation does not detect (no generation, ownership, or
+  membership check after the boundary) is a separate lead. In a check, model
+  each one as an event enabled during the suspension.
 - **Case parity.** For a new enum member or status value, list every place
   that branches on its siblings and check it there.
 - **Client parity.** When the change adds or alters a shared mechanism
@@ -229,6 +239,11 @@ These are not reasons to clear a lead:
   every value involved and the wrong value is never read before it runs.
 - Initialization order makes it safe. Trace startup, import, and recovery
   paths before relying on an order.
+- A current caller ignores or recovers from it. The flow's contract is the
+  boundary: other callers, retries, and a second instance reach the same
+  sequence. Report the caller's mitigation with the finding.
+- The events run in a safe order. In a check, model the order and let the
+  checker decide; elsewhere, clear only with the line that enforces the order.
 - The callee handles it. Open the callee, including vendored and dependency
   source, before relying on what it does; an `assert`, a registration slot, or
   an error path that returns without setting an error decides the outcome.

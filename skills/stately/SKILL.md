@@ -1,6 +1,6 @@
 ---
 name: stately
-description: Model a flow as an interactive Stately statechart, check a protocol or flow against invariants with a bundled native statechart checker (TLA+ optional), find implicit state machines in application code, make them explicit as checked XState machines, check a fix, and review a diff or pull request for state bugs. Use for /stately, "find all of the implicit state machines in my app", "make these flags explicit", "check my fix", statechart or protocol analysis, safety/liveness/deadlock checks, counterexample replay, hidden-state discovery, state-bug review of a change, app behavior documentation, and visual behavior proposals in any framework.
+description: Generate a diagram of a process or flow in Stately, model a flow as an interactive Stately statechart, check a protocol or flow against invariants with a bundled native statechart checker (TLA+ optional), find implicit state machines in application code, make them explicit as checked XState machines, check a fix, and review a diff or pull request for state bugs. Use for /stately, "find all of the implicit state machines in my app", "make these flags explicit", "check my fix", statechart or protocol analysis, safety/liveness/deadlock checks, counterexample replay, hidden-state discovery, state-bug review of a change, app behavior documentation, and visual behavior proposals in any framework.
 ---
 
 # Stately
@@ -9,6 +9,7 @@ Common requests and their workflows:
 
 | Request                                                         | Section                                                           |
 | --------------------------------------------------------------- | ----------------------------------------------------------------- |
+| "use Stately to generate a diagram of ..."                      | [Generate a diagram](#generate-a-diagram)                         |
 | "model this flow"                                               | [Model a flow](#model-a-flow)                                     |
 | "show me the happy path" or "play through this scenario"        | [Present scenarios](#present-scenarios)                           |
 | "check that this protocol follows these invariants"             | [Check invariants](#check-invariants)                             |
@@ -52,6 +53,20 @@ available, prefer a connection with `permissions.canEdit` for that project.
 If none can read it, stop the saved-model check and report the access failure.
 Check a separate source estimate only when requested, and label it as a
 different model.
+
+## Generate a diagram
+
+For a described process, author an XState v6 JSON config with named states,
+events, and object transitions. Call `visualize_machine` with
+`{ format: "json", machine: config }`. Return the provided Stately link and PNG
+image. This creates a temporary visualization without saving a hosted model.
+For several charts, use `visualize_machines`. Use `export_machine_image` when
+an explicit PNG or SVG artifact is requested. Rendering uses the shared editor
+presentation without launching a browser. Do not substitute Mermaid unless
+requested. For code-derived flows, follow the source-evidence workflow below.
+If MCP is unavailable and the Stately CLI is installed, write the config to a
+JSON file, run `statelyai render machine.json -o machine.svg`, and return the
+local SVG. Local rendering requires no sign-in or browser.
 
 ## Model a flow
 
@@ -144,6 +159,20 @@ between an `await`, callback, or message and the next effect. Write the ledger
 to `leads.md` in the task-owned directory. The model and rules come from these
 leads; the checker confirms leads, it does not replace the sweep.
 
+In a check, clear a lead only with a line in the flow's own code that blocks
+the sequence on every path through the flow's public contract. A caller that
+ignores or recovers from the bug does not clear it: report the bug with the
+caller's mitigation and its `path:line`. Never clear by reading a lead that
+depends on an order or interleaving (one callback runs before another, a
+handler finishes before the next attempt starts, a close arrives only once).
+Model it and let the checker decide.
+
+Every lead that depends on an order or interleaving goes into a checked model.
+A source finding is for a bug the model cannot express, not for an ordering
+lead that was left out of the model. A model of one component covers none of
+the leads in another. A lead from a helper or subagent stays a lead until you
+re-trace it from its cited lines.
+
 1. Check the saved model, not a parallel file. Select its connection as above,
    then read its graph, revision, and link with
    `read_stately_model({ machineId })`. Alternatively, save a new
@@ -163,8 +192,16 @@ leads; the checker confirms leads, it does not replace the sweep.
    [model-authoring.md](references/model-authoring.md#discover-and-model-the-actual-behavior).
    Give every guard and condition a `path:line` citation. A check that the code
    lacks (a cancellation, closed, or ownership test after an `await`) is a
-   lead, never a model guard. Model each lead the model can express. Read [native-checking.md](references/native-checking.md).
-   Do useful reversible work without demanding a second confirmation.
+   lead, never a model guard. Model each lead the model can express. Give
+   each attempt of a retry, reconnect, or timeout its own instance and state,
+   including work that keeps running after a timeout cancels the wrapper
+   around it. Group the ordering leads by component (class, service, module,
+   or process) and build a model for each group, or one model that includes
+   every group. Several implementations behind one contract are separate
+   components, or one model with the implementation as a parameter. Run step 2
+   on every model before step 6. When the budget cannot cover every group, say
+   so and report that group's ordering leads as questions. Read
+   [native-checking.md](references/native-checking.md). Do useful reversible work without demanding a second confirmation.
 2. Run the owned entrypoint with separately passed arguments:
 
    ```sh
@@ -241,8 +278,11 @@ leads; the checker confirms leads, it does not replace the sweep.
    `sh SKILL_DIR/scripts/stately-check render RUN_DIR/chart.mmd` only when the
    user asks for it ([render.md](references/render.md)).
 7. Report every lead in the ledger as a checker finding (rule and trace), a
-   source finding (not model-checked, with its `path:line` sequence), a
-   question, or cleared with the line that blocks it. Never drop a lead
+   source finding (a bug the model cannot express, with the full `path:line`
+   sequence you read), a question, or cleared with the line that blocks it.
+   An ordering lead with no checker trace or replay is a question. A lead with
+   neither a trace, a replay, nor a complete read sequence is a question, with
+   its sequence and the step you could not confirm. Never drop a lead
    because the model does not cover it, and never stop at the model's
    component when the sweep found leads in another implementation.
 

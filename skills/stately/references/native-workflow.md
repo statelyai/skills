@@ -16,7 +16,7 @@ by the coding host, never by the hosted Stately connection.
        revision,
        sourceSnapshot: { algorithm: "sha256", files: [{ path, sha256 }] },
      },
-     machines: [{ name: "Estimated checkout", graph, evidence }],
+     machines: [{ name: "Checkout", graph, evidence }],
    });
    ```
 
