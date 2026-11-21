@@ -1,6 +1,6 @@
 ---
 name: stately
-description: Model a flow as an interactive Stately statechart, check a protocol or flow against invariants with a bundled native statechart checker (TLA+ optional), find implicit state machines in application code, make them explicit as checked XState machines, check a fix, and review a diff or pull request for state bugs. Use for /stately, "find all of the implicit state machines in my app", "make these flags explicit", "check my fix", statechart or protocol analysis, safety/liveness/deadlock checks, counterexample replay, hidden-state discovery, state-bug review of a change, app behavior documentation, and visual behavior proposals in any framework.
+description: Generate a diagram of a process or flow in Stately, model a flow as an interactive Stately statechart, check a protocol or flow against invariants with a bundled native statechart checker (TLA+ optional), find implicit state machines in application code, make them explicit as checked XState machines, check a fix, and review a diff or pull request for state bugs. Use for /stately, "find all of the implicit state machines in my app", "make these flags explicit", "check my fix", statechart or protocol analysis, safety/liveness/deadlock checks, counterexample replay, hidden-state discovery, state-bug review of a change, app behavior documentation, and visual behavior proposals in any framework.
 ---
 
 # Stately
@@ -9,6 +9,7 @@ Common requests and their workflows:
 
 | Request | Section |
 | --- | --- |
+| "use Stately to generate a diagram of ..." | [Generate a diagram](#generate-a-diagram) |
 | "model this flow" | [Model a flow](#model-a-flow) |
 | "show me the happy path" or "play through this scenario" | [Present scenarios](#present-scenarios) |
 | "check that this protocol follows these invariants" | [Check invariants](#check-invariants) |
@@ -52,6 +53,20 @@ available, prefer a connection with `permissions.canEdit` for that project.
 If none can read it, stop the saved-model check and report the access failure.
 Check a separate source estimate only when requested, and label it as a
 different model.
+
+## Generate a diagram
+
+For a described process, author an XState v6 JSON config with named states,
+events, and object transitions. Call `visualize_machine` with
+`{ format: "json", machine: config }`. Return the provided Stately link and PNG
+image. This creates a temporary visualization without saving a hosted model.
+For several charts, use `visualize_machines`. Use `export_machine_image` when
+an explicit PNG or SVG artifact is requested. Rendering uses the shared editor
+presentation without launching a browser. Do not substitute Mermaid unless
+requested. For code-derived flows, follow the source-evidence workflow below.
+If MCP is unavailable and the Stately CLI is installed, write the config to a
+JSON file, run `statelyai render machine.json -o machine.svg`, and return the
+local SVG. Local rendering requires no sign-in or browser.
 
 ## Model a flow
 
