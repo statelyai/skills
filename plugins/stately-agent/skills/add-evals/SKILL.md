@@ -92,15 +92,26 @@ Use `explorePaths` to assert the set of reachable final states, and `await simul
 - `explorePaths` and `canReach` use `options.payloads` **instead of** the decision's own offered options, so they explore values the machine would never offer. That is what a boundary proof needs.
 - `simulateAgent` keeps the offered options: a scripted event the decision did not offer is refused, and the run ends in the decision's `onError`. Script only offered events, or pick an input that offers the value.
 
-**Decision evals.** A row is a decision request and the event a person says is right. Write rows by hand, or take them from recorded traces with `getDecisionRequests(trace, { name })` from `@statelyai/agent/evals`: each decision's first attempt, with the states it was asked in, its `options`, and its `metadata`. Compare events without caring about key order. If the decider reads anything outside the request (the ticket, the tool history), store that in the row too.
+**Decision evals.** A row is a decision request and the event a person says is right. Write rows by hand, or take them from recorded traces: each decision's first `request.start` event (a retry carries the earlier `attempts`), with its `options` and its `metadata`. Compare events without caring about key order. If the decider reads anything outside the request (the ticket, the tool history), store that in the row too.
 
 ```ts
-import { getDecisionRequests } from "@statelyai/agent/evals";
+import type { AgentExecutorDecisionRequest, AgentTraceEvent } from "@statelyai/agent";
+
+// Each decision's first attempt, read from the trace.
+const decisionRequests = (trace: readonly AgentTraceEvent[], name: string) =>
+  trace.flatMap((event) =>
+    event.type === "request.start" &&
+    event.request.kind === "decision" &&
+    event.request.name === name &&
+    !event.request.attempts?.length
+      ? [event.request as AgentExecutorDecisionRequest]
+      : [],
+  );
 
 // One row per recorded decision; `expected` is the label a person confirmed for that decision.
 // A scenario can decide more than once, so label each decision by its position, not the scenario alone.
 const rows = traces.flatMap(({ scenario, trace }) =>
-  getDecisionRequests(trace, { name: "chooseResolution" }).map(({ request }, i) => ({
+  decisionRequests(trace, "chooseResolution").map((request, i) => ({
     id: `${scenario.id}#${i}`,
     request,
     expected: labels[`${scenario.id}#${i}`],
@@ -131,7 +142,7 @@ export function objective(runs: Array<{ scenario: Scenario; outcome: string; ref
 
 Read the terminal state from the event logs `add-traces` recorded (`replay(machine, entries).snapshot`, `replay` from `@statelyai/agent/log`). Effects and violations live in the world, not the log: save them next to the thread id when the run ends, so the objective can be recomputed without running anything. Use `matchesTrajectory` only for an ordering a person requires (approval before payment), never to pin the whole path; build its input from the `machine.transition` trace events' `snapshot.value`.
 
-**Reliability.** A live model is measured over repeated runs. `repeatRuns({ scenarios, k, run, passed })` (from `@statelyai/agent/evals`) runs each scenario `k` times and reports `passes`, `passAll` (pass^k), `distinctPaths`, and `divergedAt`, the state where its runs went different ways. Report `report.passHat(k)` next to `report.passHat(1)`. For runs recorded elsewhere, `summarizeRepeats` takes them per scenario.
+**Reliability.** A live model is measured over repeated runs. `repeatRuns({ scenarios, k, run, passed })` (from `@statelyai/agent/evals`) runs each scenario `k` times and reports `passes`, `passAll` (pass^k), `distinctPaths`, and `divergedAt`, the state where its runs went different ways. Report `report.passHat(k)` next to `report.passHat(1)`.
 
 **Judged evals.** Where a model grades text because no ground truth exists, measure the judge first: `judgeAgreement(rows, { positive })` over confirmed labels, grouped by the state or request it judges. Report the true positive and true negative rates, and gate on the judge only after the user accepts them. Use `report.correct(p)` to turn the judge's rate on unlabeled runs into an estimate.
 

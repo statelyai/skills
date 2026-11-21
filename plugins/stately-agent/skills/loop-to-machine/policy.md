@@ -32,8 +32,7 @@ export const deskEvents = {
 
 ```ts
 import { z } from "zod";
-import { setupAgent, type AgentDecisionExecutor, type AgentRequestExecutors } from "@statelyai/agent";
-import { createPolicyDecider } from "@statelyai/agent/policy";
+import { runAgent, setupAgent, type AgentDecisionExecutor, type AgentRequestExecutors } from "@statelyai/agent";
 import { deskEvents, factsSchema } from "./desk.js";
 
 /** One proposal: an environment event with its `type`. */
@@ -44,14 +43,16 @@ const proposalSchema = z.discriminatedUnion("type", [
 ]);
 type Proposal = z.infer<typeof proposalSchema>;
 
+const policyInputSchema = z.object({
+  facts: factsSchema,
+  options: z.array(proposalSchema),
+  // The environment's own prompt, passed through so the model sees what it saw before.
+  system: z.string().optional(),
+  prompt: z.string().optional(),
+});
+
 const policySetup = setupAgent({
-  input: z.object({
-    facts: factsSchema,
-    options: z.array(proposalSchema),
-    // The environment's own prompt, passed through so the model sees what it saw before.
-    system: z.string().optional(),
-    prompt: z.string().optional(),
-  }),
+  input: policyInputSchema,
   context: z.object({
     facts: factsSchema,
     options: z.array(proposalSchema),
@@ -121,17 +122,33 @@ export const policyMachine = policySetup.createMachine({
 });
 
 /**
- * Runs the policy as the environment's decider. createPolicyDecider passes the request's
- * `metadata.facts`, offered events, `system`, and `prompt` as the policy's input (its input
- * schema validates them), and returns the policy's output event with its token usage.
+ * Runs the policy as the environment's decider: one policy run per decision request. Its input
+ * is the request's `metadata.facts`, offered events, `system`, and `prompt`, parsed by the
+ * policy's input schema. Returns the policy's output event with its model usage.
  */
 export function policyDecider(executors: AgentRequestExecutors): AgentDecisionExecutor {
-  return createPolicyDecider(policyMachine, { executors });
+  return async (request, info) => {
+    const result = await runAgent(policyMachine, {
+      input: policyInputSchema.parse({
+        facts: request.metadata?.facts,
+        options: request.options?.map((option) => option.event) ?? [],
+        system: request.system,
+        prompt: request.prompt,
+      }),
+      executors,
+      ...(info?.signal ? { signal: info.signal } : {}),
+    });
+    if (result.status !== "done") throw new Error(`policy settled '${result.status}'`);
+    // Report the policy's model usage so the environment's run counts it.
+    const { modelCalls, ...usage } = result.usage;
+    return { event: result.output, ...(modelCalls > 0 ? { usage } : {}) };
+  };
 }
 ```
 
 - Every state that invokes `agent.decide` needs an `onError`, or `lintAgentMachine` warns. A policy that cannot choose falls back to the safest event the environment always accepts (here `ESCALATE`).
 - A rule the policy applies without a model is a `choice` state over the facts, checked against what was offered (`offers`), since the environment may have withheld it.
+- With a `store`, give each decision's policy run its own `threadId`, for example from `info.callKey`. A thread that already has entries is resumed, so a shared one returns an earlier choice.
 
 ## Running it as the environment's decider
 
