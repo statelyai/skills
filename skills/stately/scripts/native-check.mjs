@@ -665,6 +665,28 @@ export function nativeCheckExitCode(result) {
   return !result.checker.complete || result.rules.some((rule) => rule.outcome === 'not-checked') ? 2 : 0;
 }
 
+/**
+ * Runs `attempt(assume)` for every combination of guard assumptions it requests.
+ * Each replay decides one new guard both ways; assumption sets are deduplicated by
+ * their sorted entries, so independent guards cost one replay per combination.
+ */
+function caseSplit(attempt, canReplay = () => true) {
+  const pending = [{}];
+  const seen = new Set();
+  while (pending.length) {
+    if (!canReplay()) return;
+    const assume = pending.shift();
+    const key = JSON.stringify(Object.entries(assume).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const wanted = attempt(assume);
+    if (wanted.size) {
+      const [name] = wanted;
+      pending.push({ ...assume, [name]: true }, { ...assume, [name]: false });
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Statechart semantics come from XState v6's pure transition functions. The
 // checker only interns snapshots, enumerates events and searches the graph.
@@ -727,6 +749,7 @@ class Engine {
     this.native = new Map([...this.xid].map(([id, xid]) => [xid, id]));
     this.current = null; // the pre-step configuration, for in() inside guards and actions
     this.collector = null; // { unresolved: boolean, wanted: Set<guardName> }
+    this.initialAssume = null; // guard assumptions for initial(), which has no event to carry them
     this.machine = this.xstate.createMachine({ ...this.stateConfig(model.root, true), options: { maxIterations: rules.bounds.maxAlwaysSteps } });
   }
   scope(configuration, context, event) {
@@ -744,14 +767,17 @@ class Engine {
   guardHolds(edge, context, event) {
     const name = edge.guard?.type;
     const expression = this.rules.guards[name];
-    const assume = event['@assume'] ?? {};
+    const assume = this.initialAssume ?? event['@assume'] ?? {};
     const askAssumption = (label) => {
       this.diagnostics.unresolvedGuards.add(label);
-      if (Object.hasOwn(assume, name ?? label)) {
+      // One decision per guard and context: a later read after an action changed the
+      // context may get a different answer.
+      const key = `${name ?? label} ${JSON.stringify(context)}`;
+      if (Object.hasOwn(assume, key)) {
         this.collector.unresolved = true;
-        return assume[name ?? label];
+        return assume[key];
       }
-      this.collector.wanted.add(name ?? label);
+      this.collector.wanted.add(key);
       return false;
     };
     if (!expression) return askAssumption(name ?? '(inline code)');
@@ -840,29 +866,42 @@ class Engine {
       .map((node) => node.id)
       .sort();
   }
-  /** Initial snapshots for one initial context (eventless transitions already settled). */
-  initial(context) {
-    this.current = [];
-    this.collector = { unresolved: false, unknownContext: false, wanted: new Set() };
-    let snapshot, steps;
+  /**
+   * Initial snapshots for one initial context (eventless transitions already settled):
+   * [{ snapshot, configuration, context, edgeIds, unresolved }]. Guards without an
+   * expression are case-split as in step().
+   */
+  initial(context, { canReplay } = {}) {
+    const results = [];
     try {
-      steps = this.xstate.getInitialMicrosteps(this.machine, context);
-    } catch (error) {
-      if (error instanceof this.xstate.InfiniteTransitionError) fail(`eventless transitions do not settle from the initial state: ${error.message}`);
-      throw error;
+      caseSplit((assume) => {
+        this.current = [];
+        this.collector = { unresolved: false, unknownContext: false, wanted: new Set() };
+        this.initialAssume = assume;
+        let steps;
+        try {
+          steps = this.xstate.getInitialMicrosteps(this.machine, context);
+        } catch (error) {
+          if (error instanceof this.xstate.InfiniteTransitionError) fail(`eventless transitions do not settle from the initial state: ${error.message}`);
+          throw error;
+        }
+        if (this.collector.wanted.size) return this.collector.wanted;
+        const snapshot = steps.at(-1)[0];
+        const edgeIds = steps.flatMap(([, , transitions]) => transitions.map((t) => t.meta?.edgeId).filter(Boolean));
+        results.push({
+          snapshot,
+          configuration: this.configurationOf(snapshot),
+          context: snapshot.context,
+          edgeIds,
+          unresolved: this.collector.unresolved,
+          unknownContext: this.collector.unknownContext,
+        });
+        return this.collector.wanted;
+      }, canReplay);
+    } finally {
+      this.initialAssume = null;
     }
-    snapshot = steps.at(-1)[0];
-    const edgeIds = steps.flatMap(([, , transitions]) => transitions.map((t) => t.meta?.edgeId).filter(Boolean));
-    return {
-      snapshot,
-      configuration: this.configurationOf(snapshot),
-      context: snapshot.context,
-      edgeIds,
-      unresolved: this.collector.unresolved,
-      unknownContext: this.collector.unknownContext,
-      // Undefined guards read by initial eventless transitions; their false branch was taken.
-      wanted: [...this.collector.wanted],
-    };
+    return results;
   }
   /**
    * Macrostep results for one event from one snapshot: [{ snapshot, configuration,
@@ -871,13 +910,7 @@ class Engine {
    */
   step(state, eventType, payload, { keepIgnored = false } = {}) {
     const results = [];
-    const pending = [{}];
-    const seenAssumptions = new Set();
-    while (pending.length) {
-      const assume = pending.shift();
-      const key = JSON.stringify(assume);
-      if (seenAssumptions.has(key)) continue;
-      seenAssumptions.add(key);
+    caseSplit((assume) => {
       this.current = state.configuration;
       this.collector = { unresolved: false, unknownContext: false, wanted: new Set() };
       const event = { type: eventType, ...(payload ?? {}), ...(Object.keys(assume).length ? { '@assume': assume } : {}) };
@@ -889,20 +922,14 @@ class Engine {
           fail(`eventless transitions do not settle after ${eventType} in ${state.configuration.join(',')}: ${error.message}`);
         throw error;
       }
-      if (this.collector.wanted.size) {
-        for (const name of this.collector.wanted) {
-          pending.push({ ...assume, [name]: true });
-          pending.push({ ...assume, [name]: false });
-        }
-        continue;
-      }
+      if (this.collector.wanted.size) return this.collector.wanted;
       const snapshot = microsteps.at(-1)?.[0] ?? state.snapshot;
       const edgeIds = microsteps.flatMap(([, , transitions]) => transitions.map((t) => t.meta?.edgeId).filter(Boolean));
       if (!edgeIds.length && snapshot === state.snapshot) {
         // Unhandled. Conformance keeps it so a trace can assert the event was ignored.
         if (keepIgnored)
           results.push({ snapshot, configuration: state.configuration, context: state.context, edgeIds, unresolved: this.collector.unresolved, unknownContext: this.collector.unknownContext, assume, ignored: true });
-        continue;
+        return this.collector.wanted;
       }
       results.push({
         snapshot,
@@ -913,7 +940,8 @@ class Engine {
         unknownContext: this.collector.unknownContext,
         assume,
       });
-    }
+      return this.collector.wanted;
+    });
     return results;
   }
 }
@@ -1034,29 +1062,49 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
         initial,
         boundary: !inDomain(rules.domains, item.context),
         steps: [],
-        unresolved: false,
+        resolvedStart: false, // reached at startup without any guard assumption or unresolved assignment
+        unknownStart: false,
       });
     }
     if (initial) states[Number(id.slice(1))].initial = true;
     return id;
   };
   const byId = (id) => states[Number(id.slice(1))];
-  for (const context of initialContexts) {
-    const start = engine.initial(context);
-    const id = intern(start, true);
-    if (start.unresolved) byId(id).unresolved = true;
-  }
   let complete = true;
   let incompleteReason;
+  // Guard replay can grow exponentially before the first settled state exists.
+  let startupReplays = 0;
+  const canReplay = () => {
+    if (startupReplays >= rules.bounds.maxStates || states.length >= rules.bounds.maxStates) {
+      complete = false;
+      incompleteReason = `startup exploration hit maxStates replay budget (${rules.bounds.maxStates})`;
+      return false;
+    }
+    if (rules.bounds.timeoutMs && performance.now() - started > rules.bounds.timeoutMs) {
+      complete = false;
+      incompleteReason = `startup exploration hit the ${rules.bounds.timeoutMs} ms time limit`;
+      return false;
+    }
+    startupReplays++;
+    return true;
+  };
+  for (const context of initialContexts) {
+    for (const start of engine.initial(context, { canReplay })) {
+      const id = intern(start, true);
+      if (!start.unresolved) byId(id).resolvedStart = true;
+      if (start.unknownContext) byId(id).unknownStart = true;
+    }
+    if (!complete) break;
+  }
   const eventAlphabet = model.events;
   for (let cursor = 0; cursor < states.length; cursor++) {
     const state = states[cursor];
-    if (state.boundary) continue;
     if (states.length > rules.bounds.maxStates) {
       complete = false;
       incompleteReason = `exploration hit maxStates (${rules.bounds.maxStates})`;
       break;
     }
+    if (state.boundary) continue;
     if (rules.bounds.timeoutMs && performance.now() - started > rules.bounds.timeoutMs) {
       complete = false;
       incompleteReason = `exploration hit the ${rules.bounds.timeoutMs} ms time limit after ${states.length} states`;
@@ -1101,7 +1149,7 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
   const shortestPath = (targetPredicate, resolvedOnly = false, from = null) => {
     const parent = new Map();
     const queue = (from ?? explored.filter((state) => state.initial).map((state) => state.id)).filter(
-      (id) => !(resolvedOnly && byId(id).unresolved),
+      (id) => !(resolvedOnly && from === null && !byId(id).resolvedStart),
     );
     for (const id of queue) parent.set(id, null);
     while (queue.length) {
@@ -1112,7 +1160,7 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
         return path;
       }
       for (const step of byId(id).steps)
-        if (!parent.has(step.to) && !(resolvedOnly && (step.unresolved || byId(step.to).unresolved)))
+        if (!parent.has(step.to) && !(resolvedOnly && step.unresolved))
           parent.set(step.to, { from: id, step }), queue.push(step.to);
     }
     return null;
@@ -1228,8 +1276,15 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
       const initials = explored.filter((state) => state.initial);
       const values = initials.map((state) => evalIn(state, rule.then));
       if (values.includes(null)) emit(rule, 'not-checked', 'the predicate references unknown variables in an initial state');
-      else if (values.includes(false)) emit(rule, 'broken', 'an initial state does not satisfy the condition', { path: [initials[values.indexOf(false)].id] });
-      else emit(rule, 'holds');
+      else {
+        const failing = initials.filter((_, index) => values[index] === false);
+        const certain = failing.find((state) => state.resolvedStart);
+        if (certain) emit(rule, 'broken', 'an initial state does not satisfy the condition', { path: [certain.id] });
+        else if (failing.length) emit(rule, 'not-checked', `only an initial state reached through ${unresolvedNote()} fails the condition; it may be spurious`);
+        else if (!complete) emit(rule, 'not-checked', incompleteReason);
+        else if (initials.some((state) => state.unknownStart)) emit(rule, 'not-checked', `an unresolved startup assignment kept a stale value; ${unresolvedNote()}`);
+        else emit(rule, 'holds');
+      }
     } else if (rule.kind === 'reachable') {
       const goal = (state) => evalIn(state, rule.then) === true;
       if (undecidable(rule.then)) {

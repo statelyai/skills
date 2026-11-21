@@ -1,7 +1,7 @@
 {
   "name": "stately",
   "displayName": "Stately",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "description": "Model and check application behavior, review failures in Stately, and apply visual changes in the existing application stack.",
   "author": {
     "name": "Stately",

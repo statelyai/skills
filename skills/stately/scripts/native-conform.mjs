@@ -171,20 +171,8 @@ export function conformTrace(trace, setup, { maxFrontier = 1000 } = {}) {
   let frontier = new Map();
   for (const context of initialContexts) {
     if (!Object.entries(init).every(([name, value]) => same(context[name], value))) continue;
-    const start = engine.initial(context);
-    if (start.wanted.length)
-      return {
-        verdict: 'inconclusive',
-        steps: steps.length,
-        warnings,
-        inconclusive: {
-          line: trace.header.line,
-          reason: 'unresolved-initial',
-          message: 'Eventless transitions in the initial state read guards the rules file does not define, so the initial state is unknown.',
-          unresolvedGuards: start.wanted,
-        },
-      };
-    add(frontier, { ...start, unknown: start.unknownContext, history: null });
+    // Undefined guards on initial eventless transitions are case-split; those starts are unresolved.
+    for (const start of engine.initial(context)) add(frontier, { ...start, unknown: start.unknownContext, history: null });
   }
   if (!frontier.size)
     return {

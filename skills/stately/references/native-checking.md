@@ -98,7 +98,11 @@ Unknown top-level keys are rejected. Every key except `rules` is optional.
 | `assumptions` | Strings copied into the report. |
 | `citations` | Guard name, action name, or transition (edge id) to a `"path:line"` or `"path:line-line"` string, or a list of them. A name that is not in the model or rules file stops checking. |
 
-When exploration stops early at a bound, every rule is `not-checked` and the
+Startup guard exploration also uses `maxStates` as its replay budget and checks
+the wall-clock deadline before each replay. Reaching either limit leaves startup
+exploration incomplete.
+
+When exploration stops early at a bound, unproved rules are `not-checked` and the
 reason is in `checker.bounds.incompleteReason`.
 
 A context domain acts as a constraint. A state whose context falls outside
@@ -147,8 +151,10 @@ The checker does not execute inline guard or action code from the model. Supply
 each named guard and assign action as an expression in the rules file, derived
 from the implementation.
 
-- A guard with no expression is case-split: each step is explored with the
-  guard true and with it false. This over-approximates behavior.
+- A guard with no expression is case-split: each step, including the eventless
+  transitions taken at startup, is explored with the guard true and with it
+  false. A guard read again after an action changes the context is split again.
+  This over-approximates behavior.
 - An `assign` action with no expression marks the step unresolved. Its effect
   on context is unknown.
 
@@ -167,8 +173,9 @@ Each rule gets `holds`, `broken`, or `not-checked` independently.
 - `holds` requires complete exploration. Reaching `maxStates` forbids `holds`.
 - A safety rule (`never`, `initially`) that holds under case-split guards is
   `holds`. After any unresolved assignment, it is `not-checked`.
-- A safety counterexample whose path crosses an unresolved guard or action is
-  `not-checked`, because the path may be spurious. A fully resolved path to the
+- A safety counterexample whose path crosses an unresolved guard or action,
+  including one taken at startup, is `not-checked`, because the path may be
+  spurious. A fully resolved path to the
   violation is reported as `broken` even when a shorter uncertain path exists.
 - Liveness rules and `no-dead-ends` are `not-checked` when any guard is
   unresolved.
@@ -317,7 +324,7 @@ tabs, a retry that overlaps the first attempt, or a client and a server:
 | --- | --- |
 | `conforms` | A model path matches every line without an undefined guard or assignment. |
 | `diverges` | No model path matches a line. The report names the line, the failed `expect` field (`ignored`, `in`, `context`, `when`, `init`, or `out-of-domain`), the model states before the line, and the states the line could reach. |
-| `inconclusive` | The run matches only through guards or assignments the rules file does not define, an initial eventless transition reads an undefined guard, a line fails after an undefined assignment, or more model states match than `--max-frontier` (default 1000). |
+| `inconclusive` | The run matches only through guards or assignments the rules file does not define, a line fails after an undefined assignment, or more model states match than `--max-frontier` (default 1000). |
 
 A guard with no expression is case-split, as in `check`. The context stays
 exact, so a mismatch on every branch is still a divergence. An assignment with
