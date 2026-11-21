@@ -12,7 +12,7 @@ Stately Skills are Claude skills for keeping your code, docs, and diagrams in sy
 - **[xstate-v5](skills/xstate-v5/SKILL.md)** - Design, implement, review, and migrate XState v5 statecharts in TypeScript using modern v5 patterns.
 - **[xstate-v6](skills/xstate-v6/SKILL.md)** - Write, review, and migrate XState v6 machines by reading the docs that ship with the installed package.
 
-Full documentation for the `stately` skill lives next to its source in [statelyai/viz `docs/skills/stately.md`](https://github.com/statelyai/viz/blob/main/docs/skills/stately.md). The other skills are documented by their `SKILL.md` files in this repository.
+Full documentation for the `stately` skill is in [skills/stately/README.md](skills/stately/README.md), synced from statelyai/viz with the skill. The other skills are documented by their `SKILL.md` files.
 
 ## Install
 
