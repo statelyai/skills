@@ -95,18 +95,19 @@ Use `explorePaths` to assert the set of reachable final states, and `await simul
 **Decision evals.** A row is a decision request and the event a person says is right. Write rows by hand, or take them from recorded traces: each decision's first `request.start` event (a retry carries the earlier `attempts`), with its `options` and its `metadata`. Compare events without caring about key order. If the decider reads anything outside the request (the ticket, the tool history), store that in the row too.
 
 ```ts
-import type { AgentExecutorDecisionRequest, AgentTraceEvent } from "@statelyai/agent";
+import type { AgentExecutorDecisionRequest } from "@statelyai/agent";
 
-// Each decision's first attempt, read from the trace.
-const decisionRequests = (trace: readonly AgentTraceEvent[], name: string) =>
-  trace.flatMap((event) =>
-    event.type === "request.start" &&
-    event.request.kind === "decision" &&
-    event.request.name === name &&
-    !event.request.attempts?.length
-      ? [event.request as AgentExecutorDecisionRequest]
-      : [],
-  );
+// Each decision's first attempt, read from a live or serialized (`serializeTraceEvent`) trace.
+const decisionRequests = (trace: readonly { type: string; request?: unknown }[], name: string) =>
+  trace.flatMap((event) => {
+    const request = event.request as Partial<AgentExecutorDecisionRequest> | undefined;
+    return event.type === "request.start" &&
+      request?.kind === "decision" &&
+      request.name === name &&
+      !request.attempts?.length
+      ? [request as AgentExecutorDecisionRequest]
+      : [];
+  });
 
 // One row per recorded decision; `expected` is the label a person confirmed for that decision.
 // A scenario can decide more than once, so label each decision by its position, not the scenario alone.
