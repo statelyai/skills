@@ -92,19 +92,20 @@ Use `explorePaths` to assert the set of reachable final states, and `await simul
 - `explorePaths` and `canReach` use `options.payloads` **instead of** the decision's own offered options, so they explore values the machine would never offer. That is what a boundary proof needs.
 - `simulateAgent` keeps the offered options: a scripted event the decision did not offer is refused, and the run ends in the decision's `onError`. Script only offered events, or pick an input that offers the value.
 
-**Decision evals.** A row is a decision request and the event a person says is right. Write rows by hand, or take them from recorded traces: each decision's first `request.start` event (a retry carries the earlier `attempts`), with its `options` and its `metadata`. Compare events without caring about key order. If the decider reads anything outside the request (the ticket, the tool history), store that in the row too.
+**Decision evals.** A row is a decision request and the event a person says is right. Write rows by hand, or take them from recorded traces: each decision's first `request.start` event (a retry carries the earlier `attempts`), with its `options` and its `metadata`. Keep only closed choices with at least one option: a serialized request loses its event schemas, so an open choice cannot be replayed from it, and empty `options` (`decideNext` offered nothing) leave no event to label. Compare events without caring about key order. If the decider reads anything outside the request (the ticket, the tool history), store that in the row too.
 
 ```ts
 import type { AgentExecutorDecisionRequest } from "@statelyai/agent";
 
-// Each decision's first attempt, read from a live or serialized (`serializeTraceEvent`) trace.
+// Each decision's first attempt with offered options, from a live or serialized (`serializeTraceEvent`) trace.
 const decisionRequests = (trace: readonly { type: string; request?: unknown }[], name: string) =>
   trace.flatMap((event) => {
     const request = event.request as Partial<AgentExecutorDecisionRequest> | undefined;
     return event.type === "request.start" &&
       request?.kind === "decision" &&
       request.name === name &&
-      !request.attempts?.length
+      !request.attempts?.length &&
+      request.options?.length
       ? [request as AgentExecutorDecisionRequest]
       : [];
   });
