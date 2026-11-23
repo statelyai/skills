@@ -14,7 +14,7 @@ Stately Skills are Claude skills for keeping your code, docs, and diagrams in sy
 
 ## Install
 
-<!-- Claude Code plugin from .claude-plugin/plugin.json, .claude-plugin/marketplace.json and .mcp.json -->
+<!-- Claude Code plugin from .claude-plugin/plugin.json, .claude-plugin/marketplace.json and .mcp.json; Codex plugin from plugin.json and mcp.json -->
 
 ### Claude Code
 
@@ -29,9 +29,35 @@ Then run `/mcp` and sign in to the `stately` server to save and open models in S
 
 The plugin loads the `stately`, `xstate-v5` and `xstate-v6` skills, the hosted Stately MCP server (`https://mcp.stately.ai/mcp`), and the opt-in `stately-channel` Apply channel.
 
-### Codex and other agents
+Claude Code does not update third-party marketplaces automatically unless you turn on auto-update for the `stately` marketplace in `/plugin`. To update by hand:
 
-Install the skills with [skills](https://github.com/vercel-labs/skills):
+```text
+/plugin marketplace update stately
+/plugin update stately@stately
+```
+
+### Codex
+
+Add this repository as a Codex plugin marketplace, install the `stately` plugin, and sign in to the hosted Stately MCP server:
+
+```sh
+codex plugin marketplace add statelyai/skills
+codex plugin add stately@stately
+codex mcp login stately
+```
+
+Invoke the skill with `$stately`. The plugin loads the skills in `skills/` and the hosted Stately MCP server. Checking runs locally without signing in; saving and opening models in Stately requires it.
+
+To update:
+
+```sh
+codex plugin marketplace upgrade stately
+codex plugin add stately@stately
+```
+
+### Other agents
+
+Install the skills with [skills](https://github.com/vercel-labs/skills). This installs the skills only. To save and open models in Stately, add the MCP server `https://mcp.stately.ai/mcp` to your agent and sign in.
 
 ```sh
 npx skills add statelyai/skills
@@ -54,6 +80,6 @@ Copy the whole directory: `skills/stately/scripts/` holds the bundled checker.
 
 ## Contributing
 
-The `stately` plugin and skill (`.claude-plugin/plugin.json`, `.mcp.json`, `assets/`, and `skills/stately/`) are synced from [statelyai/viz](https://github.com/statelyai/viz) by `pnpm skills:sync`. Make changes to those paths in statelyai/viz; edits made here are overwritten by the next sync. Issues are welcome here.
+The `stately` plugin and skill (`.claude-plugin/plugin.json`, `.mcp.json`, `plugin.json`, `mcp.json`, `assets/`, and `skills/stately/`) are synced from [statelyai/viz](https://github.com/statelyai/viz) by `pnpm skills:sync`. Make changes to those paths in statelyai/viz; edits made here are overwritten by the next sync. Issues are welcome here.
 
 The Stately Agent skills in `plugins/stately-agent/` moved here from [statelyai/agent](https://github.com/statelyai/agent) and are edited here. They are unlisted: the marketplace does not offer the `stately-agent` plugin, and each skill sets `metadata.internal: true`. Keep their API names in step with the `@statelyai/agent` `next` branch.
