@@ -25,6 +25,23 @@ server:
 /plugin install stately@stately
 ```
 
+In Codex, install the same plugin from the command line, then sign in to the
+Stately MCP server:
+
+```bash
+codex plugin marketplace add statelyai/skills
+codex plugin add stately@stately
+codex mcp login stately
+```
+
+`npx skills add` installs the skill files only. To connect the MCP server in an
+agent installed that way, see [MCP](https://stately.ai/docs/packages/mcp).
+
+To update the plugin in Claude Code, run `/plugin marketplace update stately`,
+then `/plugin update stately@stately`. To update it in Codex, run
+`codex plugin marketplace upgrade stately`, then
+`codex plugin add stately@stately`.
+
 For a manual first install, copy the whole `skills/stately` directory from a
 statelyai/skills checkout. `scripts/` holds the bundled checker. Back up local
 edits before updating an existing installation.
@@ -39,7 +56,8 @@ test -d skills/stately &&
 To save and open models in Stately, connect the agent to the MCP server at
 `https://mcp.stately.ai/mcp` and sign in. See
 [MCP](https://stately.ai/docs/packages/mcp) for each agent's setup. In Claude
-Code, run `/mcp` and sign in to `stately`.
+Code, run `/mcp` and sign in to `stately`. In Codex, run
+`codex mcp login stately`.
 
 ## Use
 
@@ -47,8 +65,10 @@ Mention Stately in a request to use the skill, as in the examples below. You
 can also invoke it with `/stately:stately` in Claude Code (or `/stately` where
 the host exposes the short name) or `$stately` in Codex.
 Finding, reviewing, and checking need no XState, no Stately account, and no MCP
-connection, and they never edit your code. Without a connection, the skill
-gives diagrams as XState configs that you can import into Stately.
+connection, and they never edit your code. With a connection, each diagram
+comes with a link to view it in Stately. Links to unsaved diagrams from
+`mcp.stately.ai` expire after 30 days; save a model to keep it. Without a connection, the skill gives
+diagrams as XState configs that you can import into Stately.
 
 ### Find implicit state machines
 

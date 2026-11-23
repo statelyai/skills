@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "stately",
-  "version": "1.5.5",
+  "version": "1.5.6",
   "description": "Find implicit state machines, check application behavior, and review or improve it in Stately.",
   "author": {
     "name": "Stately",
