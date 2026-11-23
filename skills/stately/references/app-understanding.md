@@ -46,8 +46,10 @@ The coding host reads source. Stately stores and displays the resulting estimate
    inventory before a replacement and preserve all its entries, or report the
    scoped update as pending. Preserve human-authored prose and confirmed or
    retired decisions. New authored entries remain drafts. Surface conflicting
-   interpretations for review. Missing functionality is **possibly removed**;
-   do not silently delete it or restore retired requirements.
+   interpretations for review. Missing functionality is **possibly removed**:
+   resend its feature with `featuresMode: "merge"`, the same name, summary and
+   citations, and `possiblyRemoved` naming what is gone. Do not silently delete
+   it or restore retired requirements.
    Background maintenance must not open a view. Saves return links without an
    editor attachment. Use `open_stately_editor` or `visualize_machine` only when
    the user asks to see the result. If a host lacks `read_stately_model`, reuse

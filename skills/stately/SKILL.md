@@ -35,11 +35,16 @@ link to an unsaved graph, `save_stately_models` and
 `save_stately_check_result` for saved ones, and `open_stately_editor` with
 `session.highlights` when the user asks to see a path on a saved model. A link
 in the answer is enough; open the editor only on request, and keep background
-documentation quiet. Without a connection or sign-in, give an XState v6 config
-(JSON or TypeScript) the user can import into Stately, and say how to sign in
-(in Claude Code, run `/mcp` and authenticate `stately`). Mermaid appears only
-in comments posted to a pull request, next to the Stately link, because
-reviewers may lack project access and GitHub renders Mermaid inline.
+documentation quiet. If a save the user asked for is not permitted or fails,
+report any models the error lists as saved, then call `visualize_machine` for
+the rest and say they were not saved. Skip this for background documentation
+saves. Copy each returned link exactly as the tool returned it, and say so when
+the tool returns no link. Without a connection or sign-in, give an XState v6
+config (JSON or TypeScript) the user can import into Stately, and say how to
+sign in (in Claude Code, run `/mcp` and authenticate `stately`; in Codex, run
+`codex mcp login stately`). Mermaid appears only in comments posted to a pull
+request, next to the Stately link, because reviewers may lack project access
+and GitHub renders Mermaid inline.
 
 When multiple Stately tool prefixes are available, treat each as a separate
 connection. Keep the connection that saved or successfully read a model for

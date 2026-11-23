@@ -1,0 +1,109 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "stately",
+  "version": "1.5.6",
+  "description": "Find implicit state machines, check application behavior, and review or improve it in Stately.",
+  "author": {
+    "name": "Stately",
+    "url": "https://stately.ai"
+  },
+  "homepage": "https://stately.ai",
+  "repository": "https://github.com/statelyai/skills",
+  "keywords": [
+    "state-machines",
+    "flows",
+    "developer-tools"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Stately",
+        "shortDescription": "Find and check state machines",
+        "longDescription": "Find implicit state machines in accessible application source, review their behavior, check selected flows, and save visual changes for your coding agent. Coding hosts can run the bundled native statechart checker, with optional TLA+, for safety, progress and deadlocks, with native failure-variable playback and authoritative rechecks. Keep your existing application framework. Checking runs locally; a Stately account is required to save/open projects. Source estimates, formal checks and actual application tests are reported separately. Source and command execution depend on the host.",
+        "developerName": "Stately",
+        "category": "Developer Tools",
+        "capabilities": [
+          "Visualize state machines",
+          "Find implicit state machines in accessible source",
+          "Browse Stately projects",
+          "Estimate application flows with evidence",
+          "Edit flows and save proposals",
+          "Review formal-check results and counterexamples",
+          "Check a flow's rules without a local shell",
+          "Request authoritative behavior rechecks"
+        ],
+        "websiteURL": "https://stately.ai",
+        "privacyPolicyURL": "https://stately.ai/privacy",
+        "termsOfServiceURL": "https://stately.ai/terms",
+        "defaultPrompt": [
+          "Visualize a traffic-light state machine.",
+          "Open a machine from my Stately projects.",
+          "Find the implicit state machines in my app and visualize one."
+        ],
+        "composerIcon": "./assets/icon.svg",
+        "composerIconDark": "./assets/icon-dark.svg",
+        "logo": "./assets/icon.png",
+        "logoDark": "./assets/icon-dark.png",
+        "supportURL": "https://statelyai.featurebase.app/en/help/articles/0637298-stately-in-chatgpt-support-and-troubleshooting"
+      },
+      "review": {
+        "test_cases": {
+          "positive": [
+            {
+              "description": "Visualize a machine",
+              "prompt": "Use Stately to visualize a traffic light with red, green, and yellow states cycling on TIMER.",
+              "tools_triggered": "visualize_machine",
+              "expected_behavior": "Show an interactive traffic-light graph with three states and TIMER transitions."
+            },
+            {
+              "description": "Browse projects",
+              "prompt": "Use Stately to list my projects and open a machine from one of them.",
+              "tools_triggered": "list_stately_projects, list_stately_project_machines, open_stately_editor",
+              "expected_behavior": "List only accessible projects, select an accessible model, and open the editor."
+            },
+            {
+              "description": "Estimate an attached flow",
+              "prompt": "Use Stately to map this checkout: cart → address → payment → confirmation. Label it an estimate based on this description and save it in my Drafts.",
+              "tools_triggered": "get_stately_flow_guidance, save_stately_models",
+              "expected_behavior": "Save and open a four-step estimated flow in personal Drafts with supplied-description evidence; do not claim source or runtime validation."
+            },
+            {
+              "description": "Save a visual proposal",
+              "prompt": "In the checkout estimate, add a review step before payment, then save the proposal using the editor.",
+              "tools_triggered": "save_stately_proposal",
+              "expected_behavior": "With project edit permission (free during beta), graph editing and Save proposal create an immutable proposal; application source is unchanged."
+            },
+            {
+              "description": "Review proposal freshness",
+              "prompt": "Read my saved checkout proposal and check whether its source freshness is known. Do not implement it.",
+              "tools_triggered": "get_stately_proposal, check_stately_proposal_source",
+              "expected_behavior": "Read baseline and proposed changes. A description-only model has no source snapshot: explain unknown freshness and do not edit application code."
+            }
+          ],
+          "negative": [
+            {
+              "description": "Unsupported payment",
+              "prompt": "Use Stately to charge my credit card $100.",
+              "expected_behavior": "Explain that Stately cannot process payments; do not fabricate success."
+            },
+            {
+              "description": "Unauthorized access",
+              "prompt": "Open a Stately machine from a project my connected account cannot access.",
+              "expected_behavior": "Respect access denial; do not expose private data or bypass permissions."
+            },
+            {
+              "description": "Unavailable source",
+              "prompt": "Map the checkout in my local repository even though I have not attached it or connected a source workspace.",
+              "expected_behavior": "Ask for source access or a description; do not invent observed source evidence."
+            }
+          ]
+        },
+        "commerce": false,
+        "commerce_description": "The plugin does not process payments. Editing is free during beta."
+      },
+      "publication": {
+        "release_notes": "Adds a source-first workflow for finding implicit state machines, ranking candidates, checking selected behavior, and reviewing results in Stately. Checking runs on the native statechart by default with TLA+ as an option. Native counterexample playback, the owned TLA+ checker, and revision-safe rechecks remain available without pstack. Checks now attach to the saved model, and the check_machine tool checks a flow's rules without a local shell."
+      }
+    }
+  }
+}
