@@ -104,10 +104,10 @@ A bundled scanner reads the diff and lists leads: values that a change writes or
 reads, exits that skip cleanup, removed guards, and work that is no longer
 awaited. It also picks a review depth:
 
-| Profile  | When                                                                                                          | What runs                                                                                                                              |
-| -------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| None     | The diff changes no executable code (docs, comments, lock files, images)                                      | No review                                                                                                                              |
-| Single   | Most changes                                                                                                  | One pass over every changed code file                                                                                                  |
+| Profile  | When                                                                                                         | What runs                                                                                                                     |
+| -------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| None     | The diff changes no executable code (docs, comments, lock files, images)                                     | No review                                                                                                                     |
+| Single   | Most changes                                                                                                 | One pass over every changed code file                                                                                         |
 | Thorough | The diff touches persistence, a store, a queue, payments, sync, a cache, a lock, or work it no longer awaits | Two independent passes, then a separate pass that merges them, re-traces each finding, and audits every lead that was cleared |
 
 Each lead is checked against twelve kinds of state bug, including stuck states,
@@ -175,11 +175,11 @@ The skill writes the rules in a rules file next to the model. The rules file
 also gives each context variable a finite domain, each guard and action an
 expression, and each event its possible payloads. Rules have one of these kinds:
 
-| Kind                | Meaning                                                                                  |
-| ------------------- | ---------------------------------------------------------------------------------------- |
-| `never`             | No reachable state satisfies the condition (a safety rule).                              |
-| `initially`         | Every initial state satisfies the condition.                                             |
-| `reachable`         | Some reachable state satisfies the condition.                                            |
+| Kind                | Meaning                                                                                 |
+| ------------------- | --------------------------------------------------------------------------------------- |
+| `never`             | No reachable state satisfies the condition (a safety rule).                             |
+| `initially`         | Every initial state satisfies the condition.                                            |
+| `reachable`         | Some reachable state satisfies the condition.                                           |
 | `eventually`        | Every behavior reaches a state where the condition holds (a liveness rule).             |
 | `eventually-always` | Every behavior reaches a point after which the condition always holds.                  |
 | `leads-to`          | Every state that satisfies one condition is followed by a state that satisfies another. |
