@@ -1,6 +1,6 @@
 # Stately.ai Skills
 
-Stately Skills are Claude skills for keeping your code, docs, and diagrams in sync as a living source of truth, readable by humans and AI agents alike.
+Stately Skills help coding agents keep code, docs, and diagrams in sync.
 
 ## Available skills
 
