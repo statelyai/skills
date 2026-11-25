@@ -198,8 +198,10 @@ async function stoppedResult(request, reason) {
         kind: 'summary-only',
         binding: { artifacts: request.artifacts },
         checker: {
-          name: 'TLC',
-          version: request.toolchain?.version ?? 'unavailable',
+          name: process.env.STATELY_EVERYSTATE ? 'everystate' : 'TLC',
+          version: process.env.STATELY_EVERYSTATE
+            ? 'unavailable'
+            : (request.toolchain?.version ?? 'unavailable'),
           command: ['stately-check', 'check', request.recheck.specPath],
           complete: false,
           bounds: {

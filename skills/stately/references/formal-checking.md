@@ -28,12 +28,20 @@ bind reviewed application source bytes without uploading their contents.
 Runtime: Node 22.18–22.x or 23.6+, Bun 1.1.5+, or Deno 2+; the shell launcher
 selects an available runtime. Deno uses `--allow-all` so supervision can inspect
 protected `/proc` entries without requiring an external `ps`; model/view code
-and downloaded-tool execution are trusted, as with Node/Bun. The repository itself requires Node 24. Java 11+
+and downloaded-tool execution are trusted, as with Node/Bun. The repository itself requires Node 26. Java 11+
 is used when available or configured by `JAVA`; otherwise an official Temurin
 25 JRE is provisioned into the user's Stately cache. TLC 1.7.4 is downloaded with
 its pinned SHA-256. Downloads use HTTPS and checksum validation. `TLA2TOOLS`
 selects another jar; record its actual version/digest and validate compatibility.
 `STATELY_TLC_JAVA`/`STATELY_TLC_JAR` are equivalent explicit overrides.
+`STATELY_EVERYSTATE` names an installed
+[everystate](https://github.com/mattzcarey/everystate) binary (MIT, tested at
+0.4.1) to run the model checking instead of TLC, on Linux and macOS. Stately
+does not download it. SANY still runs on Java to read the spec. everystate
+names a parameterized step `Bump(1)`; the runner rewrites it to TLC's `Bump`, so
+views receive the same action names. Variables in printed states can appear in
+a different order than TLC prints them. The result names `everystate` as its
+checker, with the binary's version and SHA-256 in its bounds.
 A cold cache prints progress to stderr, for example
 `Downloading Temurin JRE 25 (56 MB) into CACHE ...` (the size varies by
 platform), `Downloading TLC 1.7.4 (2 MB) ...`, and `Ready`; `render` prints the same for Pele. A warm cache prints nothing, and

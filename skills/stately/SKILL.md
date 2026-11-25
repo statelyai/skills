@@ -1,6 +1,6 @@
 ---
 name: stately
-description: Generate a diagram of a process or flow in Stately, model a flow as an interactive Stately statechart, check a protocol or flow against invariants with a bundled native statechart checker (TLA+ optional), find implicit state machines in application code, make them explicit as checked XState machines, check a fix, and review a diff or pull request for state bugs. Use for /stately, "find all of the implicit state machines in my app", "make these flags explicit", "check my fix", statechart or protocol analysis, safety/liveness/deadlock checks, counterexample replay, hidden-state discovery, state-bug review of a change, app behavior documentation, and visual behavior proposals in any framework.
+description: Generate a diagram of a process or flow in Stately, model a flow as an interactive Stately statechart, check a protocol or flow against invariants with a bundled native statechart checker (TLA+ optional), find implicit state machines in application code, make them explicit as checked XState machines, check a fix, and review a diff or pull request for state bugs. Use for /stately, /statechart (check a TLA+ spec and draw it as a statechart), "find all of the implicit state machines in my app", "make these flags explicit", "check my fix", statechart or protocol analysis, safety/liveness/deadlock checks, counterexample replay, hidden-state discovery, state-bug review of a change, app behavior documentation, and visual behavior proposals in any framework.
 ---
 
 # Stately
@@ -13,6 +13,7 @@ Common requests and their workflows:
 | "model this flow"                                               | [Model a flow](#model-a-flow)                                     |
 | "show me the happy path" or "play through this scenario"        | [Present scenarios](#present-scenarios)                           |
 | "check that this protocol follows these invariants"             | [Check invariants](#check-invariants)                             |
+| "/statechart" or "check this TLA+ spec and draw it"             | [Check invariants](#check-invariants)                             |
 | "find all of the implicit state machines in my app"             | [Find implicit state machines](#find-implicit-state-machines)     |
 | "make these flags explicit" or "turn this into a state machine" | [Make a machine explicit](#make-a-machine-explicit)               |
 | "check my fix" or "does this change fix the bug"                | [Check a fix](#check-a-fix)                                       |

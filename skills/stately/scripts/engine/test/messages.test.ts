@@ -1,34 +1,25 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { plainText, runtime } from "../backends/plain-text.ts";
 import { readMessages } from "../frontends/messages.ts";
+import { readVerdict } from "../frontends/verdict.ts";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
 
 const tool = (code: number, level: number, ...lines: string[]) =>
   [`@!@!@STARTMSG ${code}:${level} @!@!@`, ...lines, `@!@!@ENDMSG ${code} @!@!@`].join("\n");
 
 const plain = (text: string) => [...plainText(readMessages(text))].join("");
 
-test("CRLF TLC markers retain nested messages, state variables, and plain output", () => {
-  const source = [
-    "Parsing file Flow.tla",
-    tool(2110, 1, "Invariant Safety is violated.", tool(2217, 4, "1: <Init>", "/\\ n = 0")),
-    "",
-  ].join("\n");
-  const expected = [
-    "Parsing file Flow.tla",
-    {
-      code: 2110,
-      level: 1,
-      body: ["Invariant Safety is violated.", { code: 2217, level: 4, body: ["1: <Init>", "/\\ n = 0"] }],
-    },
-  ];
-  for (const ending of ["\n", "\r\n"])
-    for (const trailing of [true, false]) {
-      const text = (trailing ? source : source.trimEnd()).replaceAll("\n", ending);
-      for (const input of [text, text.split("\n")])
-        assert.deepEqual([...readMessages(input)], expected);
-      assert.equal(plain(text), plain(source));
-    }
+test("TLC output with Windows line ends names the rule that breaks and prints as with Unix ones", () => {
+  const unix = fs.readFileSync(path.join(here, "corpus", "FirstRule", "verdict-1.out"), "utf8");
+  const windows = unix.replaceAll("\n", "\r\n");
+  assert.deepEqual(readVerdict(readMessages(windows)).broke, { kind: "invariant", name: "NotOne" });
+  assert.deepEqual(readVerdict(readMessages(windows)), readVerdict(readMessages(unix)));
+  assert.equal(plain(windows), plain(unix));
 });
 
 test("TLC's -tool output prints as plain TLC prints it", () => {

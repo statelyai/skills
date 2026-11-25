@@ -14,7 +14,12 @@ import { sha256, entityId } from './check-result.mjs';
 import { completeHumanReport } from './check-scope.mjs';
 import { shareableDiagnostic } from './diagnostics.mjs';
 import { attachReport, checkReport, projectedView } from './checked-view.mjs';
-import { ensureToolchain, PROGRESS_PREFIX } from './toolchain.mjs';
+import {
+  ensureToolchain,
+  PROGRESS_PREFIX,
+  toolchainCache,
+} from './toolchain.mjs';
+import { prepareEverystate } from './everystate-tlc.mjs';
 
 await new Promise((resolve) => {
   process.stdin.once('data', resolve);
@@ -51,6 +56,14 @@ try {
   );
   process.env.JAVA = toolchain.java;
   process.env.TLA2TOOLS = toolchain.jar;
+  const everystate = process.env.STATELY_EVERYSTATE
+    ? prepareEverystate({
+        binary: process.env.STATELY_EVERYSTATE,
+        java: toolchain.java,
+        cache: toolchainCache(),
+      })
+    : undefined;
+  if (everystate) process.env.JAVA = everystate.launcher;
   const checked = await check(spec, config);
   const walked = walk(checked.graph);
   const found = [...(checked.paths ?? bugs(checked.graph, walked))].sort(
@@ -73,17 +86,19 @@ try {
     ),
   };
   const checker = {
-    name: 'TLC',
-    version: toolchain.version,
+    name: everystate ? 'everystate' : 'TLC',
+    version: everystate?.version ?? toolchain.version,
     checkedAt: new Date().toISOString(),
-    command: [
-      toolchain.java,
-      '-cp',
-      toolchain.jar,
-      'tlc2.TLC',
-      ...PINNED_FLAGS,
-      spec,
-    ],
+    command: everystate
+      ? [everystate.binary, ...PINNED_FLAGS, spec]
+      : [
+          toolchain.java,
+          '-cp',
+          toolchain.jar,
+          'tlc2.TLC',
+          ...PINNED_FLAGS,
+          spec,
+        ],
     bounds: {
       configuration: artifacts.find((item) => item.role === 'config')?.path,
       configuredSections: checked.spec.written,
@@ -99,13 +114,19 @@ try {
         ? 'SANY loaded local module closure'
         : 'local EXTENDS/INSTANCE closure snapshot',
       tlcSha256: toolchain.sha256,
+      ...(everystate
+        ? {
+            everystateSha256: everystate.sha256,
+            parser: `SANY (${toolchain.version})`,
+          }
+        : {}),
       javaVersion: toolchain.javaVersion,
       javaOptionsConfigured: [
         'JAVA_TOOL_OPTIONS',
         'JDK_JAVA_OPTIONS',
         '_JAVA_OPTIONS',
       ].filter((name) => process.env[name]),
-      engineSource: `${engine.source}@${engine.commit} (${engine.version}; MIT; base ${engine.officialSource}@${engine.officialCommit}; native label/module provenance adaptations)`,
+      engineSource: `${engine.source}@${engine.commit} (${engine.version}; MIT; native label/module provenance adaptations)`,
     },
     assumptions: [
       ...(request.scope?.assumptions ?? [
@@ -234,6 +255,12 @@ try {
   let human = renderReport(checked, found, projected.chart, projected.stories);
   for (const [name, file] of aliasNames)
     human = human.replaceAll(`in tlc-${name}.out.`, `in ${file}.`);
+  // The engine's report sentences name TLC as the checker.
+  if (everystate)
+    human = human.replace(
+      /\bTLC(?= (?:reached|stopped|found|checks|explores|keeps|reports|does not)\b)/g,
+      'everystate',
+    );
   await writeFile(
     join(stage, 'compact-report.md'),
     shareableDiagnostic(human) + '\n',

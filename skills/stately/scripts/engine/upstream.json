@@ -1,17 +1,13 @@
 {
-  "version": "pstack-claude 0.9.125",
-  "source": "https://github.com/michael-denyer/pstack-claude",
-  "commit": "7641b0dd92464194d087906f4588c0bbbccdb5d8",
-  "officialSource": "https://github.com/cursor/plugins",
-  "officialCommit": "ae5650febf4320793844c12c4adaa937f417f8da",
+  "version": "pstack 0.15.46",
+  "source": "https://github.com/cursor/plugins",
+  "commit": "0b46ec399d55f2829e88822998f53b84944837d3",
   "files": {
     "backends/cfg.ts": {
       "upstreamSha256": "aea4d8766d214e7fa08f4881f1037319655e75eb56652e1b6d5d4f13a162e3e1"
     },
     "backends/mermaid.ts": {
-      "upstreamSha256": "75704b2704a9399a39479ff704a580d5b9a1d0fede01fe771df28bf799b434b6",
-      "localSha256": "ce293d34ce3928d93329bd6d1a889d5722620008dae4339add79ef226c3f9b88",
-      "adaptation": "Ported from cursor/plugins bf0c7cd8: an arrow from outside a parent state ends at the parent's border and the parent's start marker leads inside."
+      "upstreamSha256": "ce293d34ce3928d93329bd6d1a889d5722620008dae4339add79ef226c3f9b88"
     },
     "backends/plain-text.ts": {
       "upstreamSha256": "e2bedb855eb3806ec3fe7a7bfa49baa309fb4cf0da425b5fe1e0686268ce255a"
@@ -23,13 +19,13 @@
       "upstreamSha256": "5eeab1e755f20a2c83b408c6503fdc9c6b10c971d8dedad3f912bd15f9763daf"
     },
     "frontends/dot.ts": {
-      "upstreamSha256": "4eef9ec848557dcd01ca8dbbec75b71c0653c1b73583108bafbb6f559f6d677b"
+      "upstreamSha256": "cd2e681ff58c759ddeaa17c2f3d4af1f0c3e71273566be555187b5d0e7767dac"
     },
     "frontends/marks.ts": {
       "upstreamSha256": "eb0120e61a4004a435c7b7c46916da9dc8b2fa8696ed0d3eb64dc953fed3ab11"
     },
     "frontends/messages.ts": {
-      "upstreamSha256": "9bcc7bf6e5782dfc487a98f8506f64a03834c0aa22775a82a39b7156df8dbde8"
+      "upstreamSha256": "36bfc6fb3ffa86897661efb2aa67bd95b55a4da9a3e952831f6e0668826b4b92"
     },
     "frontends/spec.ts": {
       "upstreamSha256": "450cdfc8d0577a96818ca3697efebbbf70b530a4ba7e3eee03cf1ba8d3f1a0fd",
@@ -54,7 +50,10 @@
       "adaptation": "Expose resolved projection labels and loaded SANY modules as provenance metadata."
     },
     "janitor.ts": {
-      "upstreamSha256": "1b766035fe8ecd45a5b6e82a4e17f0d59691b9af0b8d52a812ffe8f0a42020c6"
+      "upstreamSha256": "defac41e4cbfca3044c5078c544a0667f857a610c500c5ec96cb3bfaeec7120b"
+    },
+    "kill.ts": {
+      "upstreamSha256": "058df69d1184029e55d7e81b4fd37a6dc8557c9208979fb7032482d5ab0db448"
     },
     "passes/annotate.ts": {
       "upstreamSha256": "dc8eeee09c3a9a0c060f32fb1d554e01bd80e5265751cdeb041ef3e19561b92a"
@@ -86,12 +85,10 @@
       "adaptation": "Return resolved projection labels for exact native trace bindings."
     },
     "run.ts": {
-      "upstreamSha256": "9f406d509086d78c7690a12d16a6e0e5625ec37b0576223eb43da7d13952b880",
-      "localSha256": "eb1503be38909d76d122d229b18eaeb7a8bc6152922d26704d7ea08eb890e733",
-      "adaptation": "Ported from cursor/plugins bf0c7cd8: when SANY's XML run fails, rerun SANY in plain mode and report its error section, capped at 40 lines."
+      "upstreamSha256": "fb6ec4a1835a15e6e72df28bb932b8df5a4c04c5de6f9c270fd63ff5cd148dc7"
     },
     "statechart.ts": {
-      "upstreamSha256": "42e36d3deff261d01ab6a7e5e3298e27ea7d05616d94a0c468da4fb7ce2e1761"
+      "upstreamSha256": "5d5feff7d78204c828a8e30d531d23419234a81a7149dc3e48efb08dd770d6c1"
     },
     "worker.ts": {
       "upstreamSha256": "1f18ed5ef806982e05e8a40fc217e88257700b28b63cb4acbd647872f85f782b"
