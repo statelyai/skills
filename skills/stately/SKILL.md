@@ -36,8 +36,10 @@ link to an unsaved graph, `save_stately_models` and
 `session.highlights` when the user asks to see a path on a saved model. A link
 in the answer is enough; open the editor only on request, and keep background
 documentation quiet. If a save the user asked for is not permitted or fails,
-report any models the error lists as saved, then call `visualize_machine` for
-the rest and say they were not saved. Skip this for background documentation
+report any models the error lists as saved. For several remaining models, call
+`visualize_machines` in batches of up to 20. For one remaining model, call
+`visualize_machine`.
+Say which models were not saved. Skip this for background documentation
 saves. Copy each returned link exactly as the tool returned it, and say so when
 the tool returns no link. Without a connection or sign-in, give an XState v6
 config (JSON or TypeScript) the user can import into Stately, and say how to
@@ -68,8 +70,13 @@ interactive diagram or PNG when supported. In a terminal or other text-only
 interface, pass `presentation: "unicode"` or `presentation: "ascii"` and
 display the returned diagram in a monospace code block. This creates a
 temporary visualization without saving a hosted model.
-For several charts, use `visualize_machines`. Use `export_machine_image` when
-an explicit PNG or SVG artifact is requested. Rendering uses the shared editor
+For several charts, including "show me what the state machines look like",
+call `visualize_machines` with up to 20 models in one temporary workspace.
+For larger sets, split the models into batches. If the host catalog omits the
+batch tool, refresh the connection and report if the shared workspace is
+still unavailable. Pass `direction`
+only when requested. Use `export_machine_image` when an explicit PNG or SVG
+artifact is requested. Rendering uses the shared editor
 presentation without launching a browser. Do not substitute Mermaid unless
 requested. For code-derived flows, follow the source-evidence workflow below.
 If MCP is unavailable and the Stately CLI is installed, write the config to a

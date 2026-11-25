@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "stately",
-  "version": "1.5.6",
+  "version": "1.5.7",
   "description": "Find implicit state machines, check application behavior, and review or improve it in Stately.",
   "author": {
     "name": "Stately",
@@ -50,10 +50,10 @@
         "test_cases": {
           "positive": [
             {
-              "description": "Visualize a machine",
-              "prompt": "Use Stately to visualize a traffic light with red, green, and yellow states cycling on TIMER.",
-              "tools_triggered": "visualize_machine",
-              "expected_behavior": "Show an interactive traffic-light graph with three states and TIMER transitions."
+              "description": "Visualize one machine and a group",
+              "prompt": "Use Stately to visualize a traffic light with red, green, and yellow states cycling on TIMER. Then show me what the traffic light and a pedestrian signal with WALK and WAIT states look like together.",
+              "tools_triggered": "visualize_machine, visualize_machines",
+              "expected_behavior": "Show the three-state traffic light first, then open one temporary workspace containing both machines."
             },
             {
               "description": "Browse projects",
