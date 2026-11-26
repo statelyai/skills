@@ -12,23 +12,18 @@ code.
 - **Engine:** Lauren Tan's MIT-licensed pstack `/statechart` checking engine
   ([upstream repository](https://github.com/cursor/plugins/tree/main/pstack)).
   See [Credits](#credits).
-- **Vendored commit:** the 27 runtime files in `scripts/engine/` are pinned to
-  Michael Denyer's MIT-licensed Claude port,
-  [`michael-denyer/pstack-claude@7641b0dd`](https://github.com/michael-denyer/pstack-claude/tree/7641b0dd92464194d087906f4588c0bbbccdb5d8/plugins/pstack/skills/statechart)
-  (port version 0.9.125). That port is based on the official source at
-  [`cursor/plugins@ae5650fe`](https://github.com/cursor/plugins/tree/ae5650febf4320793844c12c4adaa937f417f8da/pstack/skills/statechart),
-  which is pstack release 0.15.36.
+- **Vendored commit:** the 28 runtime files in `scripts/engine/` are pinned to
+  the official source at
+  [`cursor/plugins@0b46ec39`](https://github.com/cursor/plugins/tree/0b46ec399d55f2829e88822998f53b84944837d3/pstack/skills/statechart),
+  which is pstack release 0.15.46. That release includes the CRLF and native
+  Windows changes first made in Michael Denyer's Claude port and the fixes from
+  [`cursor/plugins@bf0c7cd8`](https://github.com/cursor/plugins/commit/bf0c7cd8).
 - **Parity:** `scripts/check-stately-engine.mjs` compares file hashes against
-  the port commit `7641b0dd`, not against the latest pstack release. A newer
-  pstack release is not vendored until its delta is reviewed as described below.
-  The port's version number (0.9.125) and the official release number (0.15.36)
-  are separate version lines.
+  commit `0b46ec39`, not against the latest pstack release. A newer pstack
+  release is not vendored until its delta is reviewed as described below.
 - **Local edits:** listed with their hashes in `scripts/engine/upstream.json`:
   `frontends/spec.ts` and `ir.ts` expose loaded SANY module names, and
   `pipeline.ts` returns resolved projection labels (metadata only).
-  `backends/mermaid.ts` (parent-border arrows) and `run.ts` (SANY plain-mode
-  error lines) carry fixes ported from upstream
-  [`cursor/plugins@bf0c7cd8`](https://github.com/cursor/plugins/commit/bf0c7cd8).
   Checker and verdict algorithms are unchanged.
 
 | Statechart capability                                                                       | Stately coverage                                                                       |
@@ -88,11 +83,9 @@ part maps to a stronger Stately workflow:
 
 ## Maintain the contract
 
-`scripts/engine/upstream.json` records all 27 upstream runtime source hashes at
-the [exact Claude-port commit](https://github.com/michael-denyer/pstack-claude/tree/7641b0dd92464194d087906f4588c0bbbccdb5d8/plugins/pstack/skills/statechart),
-plus the local adaptations: three label/module-provenance changes and the two
-fixes ported from upstream `bf0c7cd8`. The MIT attribution
-also records the original official source. Record every future edit under
+`scripts/engine/upstream.json` records all 28 upstream runtime source hashes at
+the [exact upstream commit](https://github.com/cursor/plugins/tree/0b46ec399d55f2829e88822998f53b84944837d3/pstack/skills/statechart),
+plus the three local label/module-provenance adaptations. Record every future edit under
 `scripts/engine/` in `upstream.json` and in [Vendored engine version](#vendored-engine-version). Packaging omits unused legacy
 launchers and the development corpus; the owned runtime needs neither.
 
@@ -118,11 +111,11 @@ The TLA+ checking engine behind `/stately` is Lauren Tan's pstack
 integration, verdict and path algorithms, projection, Mermaid output, report
 format, and regression corpus are her work, and Stately builds on them directly.
 
-- Upstream: [github.com/cursor/plugins, `pstack/skills/statechart`](https://github.com/cursor/plugins/tree/ae5650febf4320793844c12c4adaa937f417f8da/pstack/skills/statechart),
-  commit `ae5650febf4320793844c12c4adaa937f417f8da` (pstack 0.15.36).
-- Claude port: Michael Denyer's [`pstack-claude`](https://github.com/michael-denyer/pstack-claude/tree/7641b0dd92464194d087906f4588c0bbbccdb5d8/plugins/pstack/skills/statechart),
-  commit `7641b0dd92464194d087906f4588c0bbbccdb5d8`, MIT. Its CRLF message
-  normalization and Windows helper changes are retained.
+- Upstream: [github.com/cursor/plugins, `pstack/skills/statechart`](https://github.com/cursor/plugins/tree/0b46ec399d55f2829e88822998f53b84944837d3/pstack/skills/statechart),
+  commit `0b46ec399d55f2829e88822998f53b84944837d3` (pstack 0.15.46).
+- Claude port: Michael Denyer's MIT-licensed [`pstack-claude`](https://github.com/michael-denyer/pstack-claude/tree/7641b0dd92464194d087906f4588c0bbbccdb5d8/plugins/pstack/skills/statechart)
+  0.9.125 was the earlier baseline. Its CRLF and Windows changes are now part
+  of the official source.
 - License and notice: [`scripts/engine/LICENSE.md`](../scripts/engine/LICENSE.md)
   and [`scripts/engine/NOTICE.md`](../scripts/engine/NOTICE.md). The rendering
   guide in [render.md](render.md) is also adapted from her work.

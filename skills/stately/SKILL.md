@@ -1,6 +1,6 @@
 ---
 name: stately
-description: Generate a diagram of a process or flow in Stately, model a flow as an interactive Stately statechart, check a protocol or flow against invariants with a bundled native statechart checker (TLA+ optional), find implicit state machines in application code, make them explicit as checked XState machines, check a fix, and review a diff or pull request for state bugs. Use for /stately, "find all of the implicit state machines in my app", "make these flags explicit", "check my fix", statechart or protocol analysis, safety/liveness/deadlock checks, counterexample replay, hidden-state discovery, state-bug review of a change, app behavior documentation, and visual behavior proposals in any framework.
+description: Generate a diagram of a process or flow in Stately, model a flow as an interactive Stately statechart, check a protocol or flow against invariants with a bundled native statechart checker (TLA+ optional), find implicit state machines in application code, make them explicit as checked XState machines, check a fix, and review a diff or pull request for state bugs. Use for /stately, /statechart (check a TLA+ spec and draw it as a statechart), "find all of the implicit state machines in my app", "make these flags explicit", "check my fix", statechart or protocol analysis, safety/liveness/deadlock checks, counterexample replay, hidden-state discovery, state-bug review of a change, app behavior documentation, and visual behavior proposals in any framework.
 ---
 
 # Stately
@@ -13,6 +13,7 @@ Common requests and their workflows:
 | "model this flow"                                               | [Model a flow](#model-a-flow)                                     |
 | "show me the happy path" or "play through this scenario"        | [Present scenarios](#present-scenarios)                           |
 | "check that this protocol follows these invariants"             | [Check invariants](#check-invariants)                             |
+| "/statechart" or "check this TLA+ spec and draw it"             | [Check invariants](#check-invariants)                             |
 | "find all of the implicit state machines in my app"             | [Find implicit state machines](#find-implicit-state-machines)     |
 | "make these flags explicit" or "turn this into a state machine" | [Make a machine explicit](#make-a-machine-explicit)               |
 | "check my fix" or "does this change fix the bug"                | [Check a fix](#check-a-fix)                                       |
@@ -36,8 +37,10 @@ link to an unsaved graph, `save_stately_models` and
 `session.highlights` when the user asks to see a path on a saved model. A link
 in the answer is enough; open the editor only on request, and keep background
 documentation quiet. If a save the user asked for is not permitted or fails,
-report any models the error lists as saved, then call `visualize_machine` for
-the rest and say they were not saved. Skip this for background documentation
+report any models the error lists as saved. For several remaining models, call
+`visualize_machines` in batches of up to 20. For one remaining model, call
+`visualize_machine`.
+Say which models were not saved. Skip this for background documentation
 saves. Copy each returned link exactly as the tool returned it, and say so when
 the tool returns no link. Without a connection or sign-in, give an XState v6
 config (JSON or TypeScript) the user can import into Stately, and say how to
@@ -63,10 +66,18 @@ different model.
 
 For a described process, author an XState v6 JSON config with named states,
 events, and object transitions. Call `visualize_machine` with
-`{ format: "json", machine: config }`. Return the provided Stately link and PNG
-image. This creates a temporary visualization without saving a hosted model.
-For several charts, use `visualize_machines`. Use `export_machine_image` when
-an explicit PNG or SVG artifact is requested. Rendering uses the shared editor
+`{ format: "json", machine: config }`. Return the Stately link and show the
+interactive diagram or PNG when supported. In a terminal or other text-only
+interface, pass `presentation: "unicode"` or `presentation: "ascii"` and
+display the returned diagram in a monospace code block. This creates a
+temporary visualization without saving a hosted model.
+For several charts, including "show me what the state machines look like",
+call `visualize_machines` with up to 20 models in one temporary workspace.
+For larger sets, split the models into batches. If the host catalog omits the
+batch tool, refresh the connection and report if the shared workspace is
+still unavailable. Pass `direction`
+only when requested. Use `export_machine_image` when an explicit PNG or SVG
+artifact is requested. Rendering uses the shared editor
 presentation without launching a browser. Do not substitute Mermaid unless
 requested. For code-derived flows, follow the source-evidence workflow below.
 If MCP is unavailable and the Stately CLI is installed, write the config to a
@@ -117,6 +128,17 @@ accepts a strict finite flat subset; when the TLA+ path is needed for richer
 behavior, author TLA+ directly instead of deleting guards, context, hierarchy,
 or actors.
 
+## Show a state machine
+
+For “show me a state machine,” call `open_stately_editor` once with the saved
+`machineId` or a supplied `source: { format, content }`. Set
+`session: { view: "standalone", mode: "view" }` and add `session.simulation`
+when the event sequence is known. Start at step 0 unless the user specifies
+a different step. Use `read_stately_model` for background reads.
+Use the mapping workflow for requests to map application behavior.
+If the host lacks standalone editor options, use one available viewer and
+describe which presentation options its schema supports.
+
 ## Present scenarios
 
 For an existing model, inspect the connected `open_stately_editor` schema for
@@ -124,7 +146,7 @@ For an existing model, inspect the connected `open_stately_editor` schema for
 model before selecting its event sequence. Choose actual event objects, payloads,
 input, and context from the model and source. Clarify ambiguous outcomes.
 
-- “Show me the happy path” normally means `session.highlights` with a
+- “Highlight the happy path” normally means `session.highlights` with a
   `{ kind: "scenario", scenario: { events: [...] } }` group. Highlight the whole
   trace. Multiple labeled groups support comparisons, colors, and `showLegend`.
 - “Play through the happy path” normally means `session.simulation` with
@@ -133,7 +155,7 @@ input, and context from the model and source. Clarify ambiguous outcomes.
 - Explicit requests for highlighting or simulation override these wording
   conventions. They are not reserved phrases.
 
-Pass the selected saved `machineId` and `session` to `open_stately_editor`. These
+Pass the selected saved `machineId` or supplied `source` and `session` to `open_stately_editor`. These
 options are session-only. Highlight groups replace the whole list; `[]` clears it.
 During simulation, normal current-step highlights replace custom annotations.
 Opening a scenario loads its history for user navigation. Do not simulate clicks,

@@ -212,7 +212,9 @@ proof for every value.
 For TLA+, the skill writes the spec, a TLC config, and a view that projects
 TLC's states onto a statechart, so counterexamples show up in Stately like
 native ones. It uses Java 11 or later when installed, or downloads a Java
-runtime and TLC 1.7.4 on first use, with checksums verified. To check an
+runtime and TLC 1.7.4 on first use, with checksums verified. Set
+`STATELY_EVERYSTATE` to an installed everystate binary to run the model
+checking with everystate instead of TLC, on Linux and macOS. To check an
 existing spec:
 
 ```text

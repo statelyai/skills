@@ -37,7 +37,7 @@ excluded engine test directory.
 
 Adapted from Lauren Tan's `statechart` rendering guide, copyright (c) 2026 Lauren
 Tan, MIT licensed. [License](../scripts/engine/LICENSE.md); [pinned upstream
-source](https://github.com/cursor/plugins/tree/ae5650febf4320793844c12c4adaa937f417f8da/pstack/skills/statechart).
+source](https://github.com/cursor/plugins/tree/0b46ec399d55f2829e88822998f53b84944837d3/pstack/skills/statechart).
 The original package API/theming references are https://pele.run/api and
 https://pele.run/theming. Stately owns the launcher, cache, and renderer adapter.
 
