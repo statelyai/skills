@@ -8,8 +8,9 @@ The coding host reads source. Stately stores and displays the resulting estimate
 
 1. Discover the actual exposed tools. Call `get_stately_flow_guidance`, inspect
    the repository and tests, and read `statelyai.json` for a linked project.
-2. Inventory capabilities by user task, including those without a stateful flow.
-   Give each feature a summary, source citations, uncertainty, optional category
+2. Inventory capabilities, including those without a stateful flow. List each
+   capability as its own feature and group them by user task with `category`.
+   Complete the inventory before mapping flows. Give each feature a summary, source citations, uncertainty, optional category
    and evidence-supported entry points. User stories are optional.
 3. Save the inventory with `save_stately_models` and meaningful stateful flows.
    Use an inventory carrier model if the app has no stateful flows; label it as
