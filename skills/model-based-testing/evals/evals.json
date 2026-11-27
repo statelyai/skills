@@ -1,0 +1,47 @@
+{
+  "skill_name": "model-based-testing",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We have 40 Playwright tests in e2e/checkout/*.spec.ts. Replace them with model-based tests using @xstate/test, and make sure we don't lose anything they cover.",
+      "expected_output": "An inventory-first migration plan that builds a parity ledger from the Playwright listing, maps each test's actions and assertions to model events and oracles, replays each legacy sequence with testPaths fromEvents, runs parity-check.mjs and negative controls, keeps residual tests, and deletes legacy tests only after both suites pass.",
+      "files": [],
+      "expectations": [
+        "The answer inventories tests with `npx playwright test --list --reporter=json` rather than by reading or globbing files.",
+        "The answer creates or uses a per-test parity ledger with mapped, residual, and dropped statuses.",
+        "The answer replays each legacy test's exact event sequence (for example with `testPaths(machine, { fromEvents })`) instead of relying only on generated shortest paths.",
+        "The answer maps each legacy assertion to an oracle such as a `projectModel` key or `states` assertion.",
+        "The answer includes a negative control that proves the new oracles fail when the observed value is wrong.",
+        "The answer keeps tests the model cannot express (screenshots, accessibility, exact request payloads) as residual instead of deleting them.",
+        "The answer does not mark any test as dropped without the user's approval.",
+        "The answer visualizes the model in Stately or says how to."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Write model-based tests for our signup wizard (email step, profile step, review step, back buttons, server validation errors). The project uses xstate 6 beta and Vitest.",
+      "expected_output": "A v6 model written from the described behavior, shown in Stately, a projection of what the UI shows, a SUT adapter with reset, network stubbed per event case, testPaths in CI with a coverage gate, and failure persistence.",
+      "files": [],
+      "expectations": [
+        "The model uses XState v6 syntax (object or function transitions, `schemas` with `types<...>()` or Zod), not v5 string targets.",
+        "The answer reads or cites the installed `@xstate/test` README or `xstate/docs/model-based-testing.md` for the API.",
+        "The answer shows or links the model in Stately with `visualize_machine` before or alongside writing the SUT adapter.",
+        "`projectModel` and `read()` return the same shape and include only values the UI shows.",
+        "Server validation errors are modeled as event cases or outcomes with stubs, not real network calls.",
+        "The test gates coverage with `assertTestCoverage` and reports coverage as relative to the supplied event cases."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Our app is on xstate 5. Can we use @xstate/test 2 beta to model-test our todo app?",
+      "expected_output": "Explains that @xstate/test 2.x requires xstate 6, asks before upgrading, and proposes isolating the model tests in a separate workspace package with xstate@beta as a dev dependency.",
+      "files": [],
+      "expectations": [
+        "The answer states that `@xstate/test` 2.x requires `xstate` 6.",
+        "The answer asks before upgrading the app's xstate dependency.",
+        "The answer offers a separate test workspace with `xstate@beta` as an alternative.",
+        "The answer does not write the model in XState v5 syntax for use with @xstate/test 2.x."
+      ]
+    }
+  ]
+}
