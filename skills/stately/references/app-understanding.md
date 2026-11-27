@@ -10,8 +10,9 @@ The coding host reads source. Stately stores and displays the resulting estimate
    `statelyai.json` for a linked project.
 2. Inventory capabilities, including those without a stateful flow. List each
    capability as its own feature and group them by user task with `category`.
-   Give each feature a summary, `path:start-end` citations, uncertainty and
-   evidence-supported entry points. User stories are optional.
+   Give each feature a summary, `path:start-end` citations of the code that
+   implements it (not a route table or dispatcher that only references it),
+   uncertainty and evidence-supported entry points. User stories are optional.
 3. Save the complete inventory with `save_stately_models` before any flow work.
    Omit `machines` to save features alone; the server stores them on a
    "Feature inventory" model. Honor project links and retain the returned IDs.
