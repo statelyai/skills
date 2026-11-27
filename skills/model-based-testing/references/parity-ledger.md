@@ -1,10 +1,7 @@
 # Parity ledger
 
-The ledger (`e2e-parity.json`) records, for every legacy end-to-end test, how
-the model test now covers it. `scripts/parity-check.mjs` checks it against the
-runner's test inventory.
-
-## Format
+`e2e-parity.json`, checked against the test inventory by
+`scripts/parity-check.mjs`.
 
 ```json
 {
@@ -28,36 +25,35 @@ runner's test inventory.
     {
       "id": "e2e/login.spec.ts > login form matches visual snapshot",
       "status": "residual",
-      "reason": "Screenshot comparison. The model does not describe pixels.",
+      "reason": "Screenshot comparison.",
       "keptIn": "e2e/login.spec.ts"
     },
     {
       "id": "e2e/login.spec.ts > logs in (old flow)",
       "status": "dropped",
-      "reason": "Same sequence and assertions as 'logs in with valid credentials'.",
+      "reason": "Duplicates 'logs in with valid credentials'.",
       "approvedBy": "Ada Lovelace"
     }
   ]
 }
 ```
 
-| Field | Required for | Description |
+| Field | Required for | Value |
 | --- | --- | --- |
-| `id` | all | `<file relative to the runner root> > <describe titles> > <test title>`, as the inventory prints it. |
-| `status` | all | `mapped`, `residual`, or `dropped`. `--init` writes `todo`, which fails the check. |
-| `events` | `mapped` | Model events in the order the legacy test performed them, with the concrete payloads it used. JSON only. |
-| `assertions[].legacy` | `mapped` | The legacy assertion, quoted from the test. |
-| `assertions[].afterStep` | `mapped` | The number of events sent before the assertion ran. `0` is the initial state. |
-| `assertions[].oracle` | `mapped` | What checks it now: `projectModel.<key>`, `states.<state>`, `invariant:<name>`, or `check:<name>`. |
-| `reason` | `residual`, `dropped` | Why the model does not cover it. |
-| `keptIn` | `residual` | Where the legacy test still runs. |
-| `approvedBy` | `dropped` | The person who agreed to drop the coverage. |
+| `id` | all | `<file> > <describe titles> > <test title>`, as the inventory prints it |
+| `status` | all | `mapped`, `residual`, or `dropped` (`--init` writes `todo`, which fails) |
+| `events` | `mapped` | Model events in legacy order, with the payloads the test used |
+| `assertions[].legacy` | `mapped` | The legacy assertion, quoted |
+| `assertions[].afterStep` | `mapped` | Events sent before the assertion; `0` is the initial state |
+| `assertions[].oracle` | `mapped` | `projectModel.<key>`, `states.<state>`, `invariant:<name>`, or `check:<name>` |
+| `reason` | `residual`, `dropped` | Why the model does not cover it |
+| `keptIn` | `residual` | Where the legacy test still runs |
+| `approvedBy` | `dropped` | The person who approved dropping it |
 
-Legacy tests that generate data (faker, random ids, timestamps) need a
-recorded concrete value in `events`, and the model must accept any value the
-generator could produce. Note the generator in `legacy`.
+For generated data (faker, random ids), record the value the test used and
+make the model accept any generated value.
 
-## Parity test, Vitest or a plain SUT
+## Vitest
 
 ```ts
 import { test } from 'vitest';
@@ -76,7 +72,7 @@ for (const entry of ledger.tests.filter((t) => t.status === 'mapped')) {
 }
 ```
 
-## Parity test, Playwright
+## Playwright
 
 ```ts
 import { test } from '@playwright/test';
@@ -99,22 +95,5 @@ for (const entry of ledger.tests.filter((t) => t.status === 'mapped')) {
 }
 ```
 
-`loginPage` holds the `reset`, `events`, `read`, `projectModel`, and `mocks`
-shared by the parity test and the generated test. Keep one adapter so both
-tests observe the application the same way.
-
-## Negative controls
-
-An oracle control proves that `read()` observes what a legacy assertion
-checked. For an assertion with `oracle: "projectModel.error"` after step 3,
-make `projectModel` return a wrong `error` only in the state reached at step
-3, run the parity test, and confirm that entry fails with
-`observation diverged` at that step. Revert the change.
-
-A bug control proves the suite catches a real regression. Break the
-application the way a legacy test guards against (remove a guard, skip a
-state update, return the wrong status from a mock), and confirm the legacy
-test and its parity replay both fail. Revert the change.
-
-Record the controls that ran in the pull request description, not in the
-ledger.
+`loginPage` holds `reset`, `events`, `read`, `projectModel`, and `mocks`.
+Share it with the generated test so both observe the page the same way.
