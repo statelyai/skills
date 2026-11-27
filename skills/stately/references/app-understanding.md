@@ -6,17 +6,27 @@ The coding host reads source. Stately stores and displays the resulting estimate
 
 ## First use
 
-1. Discover the actual exposed tools. Call `get_stately_flow_guidance`, inspect
-   the repository and tests, and read `statelyai.json` for a linked project.
-2. Inventory capabilities by user task, including those without a stateful flow.
-   Give each feature a summary, source citations, uncertainty, optional category
-   and evidence-supported entry points. User stories are optional.
-3. Save the inventory with `save_stately_models` and meaningful stateful flows.
-   Use an inventory carrier model if the app has no stateful flows; label it as
-   documentation, without inventing behavior. Honor project links and retain the
-   returned IDs. If the tool is absent, keep the inventory as an artifact and
-   report saving as pending. Never call missing tools or invent links.
-4. Return the project Features URL, scope and gaps. The user reviews the inventory
+1. Discover the actual exposed tools. Inspect the repository and tests, and read
+   `statelyai.json` for a linked project.
+2. Inventory capabilities, including those without a stateful flow. List each
+   capability as its own feature and group them by user task with `category`.
+   Give each feature a summary, `path:start-end` citations of the code that
+   implements it (not a route table or dispatcher that only references it),
+   uncertainty and evidence-supported entry points. User stories are optional.
+   Before finishing, sweep each user-facing surface for missed capabilities:
+   settings and preferences, configuration options and environment variables,
+   keyboard shortcuts and gestures, themes and localization, integrations,
+   import and export, and CLI or API commands.
+3. Save the complete inventory with `save_stately_models` before any flow work.
+   Omit `machines` to save features alone; the server stores them on a
+   "Feature inventory" model, and later inventory-only saves update it. Save
+   more than 100 features in batches with `featuresMode: "merge"`. Honor
+   project links and retain the returned IDs. If the tool is absent, keep the
+   inventory as an artifact and report saving as pending. Never call missing
+   tools or invent links.
+4. Then map meaningful stateful flows, if any: call `get_stately_flow_guidance`
+   and save them with `featuresMode: "merge"`, passing the features they map.
+5. Return the project Features URL, scope and gaps. The user reviews the inventory
    and chooses **Review changes → Save review baseline** before future updates.
 
 ## During ordinary coding work
