@@ -13,11 +13,17 @@ The coding host reads source. Stately stores and displays the resulting estimate
    Give each feature a summary, `path:start-end` citations of the code that
    implements it (not a route table or dispatcher that only references it),
    uncertainty and evidence-supported entry points. User stories are optional.
+   Before finishing, sweep each user-facing surface for missed capabilities:
+   settings and preferences, configuration options and environment variables,
+   keyboard shortcuts and gestures, themes and localization, integrations,
+   import and export, and CLI or API commands.
 3. Save the complete inventory with `save_stately_models` before any flow work.
    Omit `machines` to save features alone; the server stores them on a
-   "Feature inventory" model. Honor project links and retain the returned IDs.
-   If the tool is absent, keep the inventory as an artifact and report saving as
-   pending. Never call missing tools or invent links.
+   "Feature inventory" model, and later inventory-only saves update it. Save
+   more than 100 features in batches with `featuresMode: "merge"`. Honor
+   project links and retain the returned IDs. If the tool is absent, keep the
+   inventory as an artifact and report saving as pending. Never call missing
+   tools or invent links.
 4. Then map meaningful stateful flows, if any: call `get_stately_flow_guidance`
    and save them with `featuresMode: "merge"`, passing the features they map.
 5. Return the project Features URL, scope and gaps. The user reviews the inventory
