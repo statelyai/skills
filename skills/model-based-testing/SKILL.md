@@ -82,9 +82,11 @@ templates: [references/parity-ledger.md](references/parity-ledger.md).
 5. Add generated coverage (`pathGenerator: 'edges'`) with `assertTestCoverage`.
 6. `node <skill-dir>/scripts/parity-check.mjs --inventory e2e-inventory.json --ledger e2e-parity.json`
    must exit 0.
-7. Negative controls: for each assertion, make its `projectModel` key wrong at
-   that step and confirm the replay fails there. Where feasible, inject the
-   bug the legacy test guards against and confirm both tests fail. Revert.
+7. Negative controls: for each assertion, change the value the application
+   shows at that step (edit the app, a mock, or fixture data) and confirm the
+   replay fails there. Changing `projectModel` alone does not prove `read()`
+   observes the value. If no application-side change is possible, mark the
+   test residual. Revert every control.
 8. Run both suites in CI under the legacy suite's browser projects. After a
    green run, delete mapped tests, keep residual ones, and commit the ledger.
 

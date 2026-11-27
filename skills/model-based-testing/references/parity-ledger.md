@@ -42,7 +42,7 @@
 | --- | --- | --- |
 | `id` | all | `<file> > <describe titles> > <test title>`, as the inventory prints it |
 | `status` | all | `mapped`, `residual`, or `dropped` (`--init` writes `todo`, which fails) |
-| `events` | `mapped` | Model events in legacy order, with the payloads the test used |
+| `events` | `mapped` | Model events in legacy order, with the payloads the test used. `[]` checks only the initial state |
 | `assertions[].legacy` | `mapped` | The legacy assertion, quoted |
 | `assertions[].afterStep` | `mapped` | Events sent before the assertion; `0` is the initial state |
 | `assertions[].oracle` | `mapped` | `projectModel.<key>`, `states.<state>`, `invariant:<name>`, or `check:<name>` |

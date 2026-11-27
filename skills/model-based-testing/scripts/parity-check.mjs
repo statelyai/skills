@@ -50,32 +50,58 @@ const normalizeFile = (file) =>
 const testId = (file, titles) =>
   `${normalizeFile(file)} > ${titles.filter(Boolean).join(' > ')}`;
 
-function inventoryIds(data) {
-  // Playwright JSON report: { suites: [{ file, specs, suites }] }
+// Returns one { id, project } record per test the runner reported.
+function inventoryRecords(data) {
+  // Playwright JSON report: { suites: [{ file, specs, suites }], errors: [] }
   if (data && Array.isArray(data.suites)) {
-    const ids = [];
+    if (Array.isArray(data.errors) && data.errors.length > 0) {
+      const first = data.errors[0]?.message ?? JSON.stringify(data.errors[0]);
+      fail(`inventory has ${data.errors.length} collection error(s); fix them and list again. First: ${first}`);
+    }
+    const records = [];
     const walk = (suite, titles, isFileSuite) => {
       const path = isFileSuite ? titles : [...titles, suite.title];
       for (const spec of suite.specs ?? []) {
-        ids.push(testId(spec.file ?? suite.file, [...path, spec.title]));
+        // One spec covers every browser project, so it is one record.
+        records.push({ id: testId(spec.file ?? suite.file, [...path, spec.title]) });
       }
       for (const child of suite.suites ?? []) walk(child, path, false);
     };
     for (const fileSuite of data.suites) walk(fileSuite, [], true);
-    return ids;
+    return records;
   }
   if (Array.isArray(data)) {
     return data.map((entry, i) => {
-      if (typeof entry === 'string') return entry;
-      if (entry.id) return entry.id;
-      if (entry.file && entry.name) return testId(entry.file, [entry.name]);
+      if (typeof entry === 'string') return { id: entry };
+      const project = entry.projectName ?? entry.project;
+      if (entry.id) return { id: entry.id, project };
+      if (entry.file && entry.name) return { id: testId(entry.file, [entry.name]), project };
       fail(`inventory entry ${i} has no "id" or "file" and "name"`);
     });
   }
   fail('unrecognized inventory format');
 }
 
-const inventory = [...new Set(inventoryIds(readJson(inventoryPath)))];
+// The same id in different projects is one legacy test. The same id twice in
+// one project is two tests the ledger cannot tell apart.
+function uniqueIds(records) {
+  const seen = new Set();
+  const ambiguous = new Set();
+  for (const { id, project } of records) {
+    const key = `${project ?? ''}\u0000${id}`;
+    if (seen.has(key)) ambiguous.add(id);
+    seen.add(key);
+  }
+  if (ambiguous.size > 0) {
+    fail(
+      `inventory has ${ambiguous.size} ambiguous id(s); give these tests unique titles:\n` +
+        [...ambiguous].map((id) => `  ${id}`).join('\n')
+    );
+  }
+  return [...new Set(records.map((r) => r.id))];
+}
+
+const inventory = uniqueIds(inventoryRecords(readJson(inventoryPath)));
 
 if (init) {
   const tests = inventory.map((id) => ({ id, status: 'todo', events: [], assertions: [] }));
@@ -100,8 +126,9 @@ for (const [i, entry] of ledger.tests.entries()) {
 
   switch (entry.status) {
     case 'mapped': {
-      if (!Array.isArray(entry.events) || entry.events.length === 0) {
-        errors.push(`${where}: mapped entry has no "events"`);
+      // An empty array is valid: the replay checks the initial state.
+      if (!Array.isArray(entry.events)) {
+        errors.push(`${where}: mapped entry has no "events" array`);
       } else if (entry.events.some((e) => !e || typeof e.type !== 'string')) {
         errors.push(`${where}: every event needs a string "type"`);
       }
