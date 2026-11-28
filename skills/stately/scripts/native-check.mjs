@@ -1014,9 +1014,58 @@ function components(byId, startIds, inside) {
  * `ensureXState` in toolchain.mjs, imported by the caller); without it the module is
  * resolved next to graph-tools or the skill.
  */
+// ---------------------------------------------------------------------------
+// Rules stored on the model. Acceptance criteria in `data.statelySpec` carry a
+// rule each; context domains come from `data.schemas.context`, a map of property
+// JSON Schemas (or a root object schema), for integer with minimum and maximum,
+// boolean, or enum fields with an initial
+// value in `data.context`. Guards and actions are
+// extracted from implementations by prepare(), as for a rules file.
+// ---------------------------------------------------------------------------
+
+function schemaDomains(schema, initialContext) {
+  const domains = {};
+  if (!record(schema)) return domains;
+  // The editor stores a map of property schemas; a root object schema also works.
+  const properties = schema.type === 'object' && record(schema.properties) ? schema.properties : schema;
+  for (const [name, property] of Object.entries(properties)) {
+    // A domain needs an initial value; fields missing from the initial context stay out.
+    if (!record(property) || !Object.hasOwn(initialContext, name)) continue;
+    if (Array.isArray(property.enum) && property.enum.length && property.enum.every((value) => ['string', 'number', 'boolean'].includes(typeof value)))
+      domains[name] = property.enum;
+    else if (property.type === 'boolean') domains[name] = 'bool';
+    else if (property.type === 'integer' && Number.isInteger(property.minimum) && Number.isInteger(property.maximum) && property.minimum <= property.maximum)
+      domains[name] = { min: property.minimum, max: property.maximum };
+  }
+  return domains;
+}
+
+/**
+ * A rules file built from the rules on a model's acceptance criteria, or null
+ * when no criterion has one. Retired requirements are skipped. Each rule id is
+ * `<requirement id>/<criterion id>`.
+ */
+export function rulesFromModel(model) {
+  const spec = record(model?.data?.statelySpec) ? model.data.statelySpec : null;
+  const rules = [];
+  for (const requirement of Array.isArray(spec?.requirements) ? spec.requirements : []) {
+    if (!record(requirement) || requirement.status === 'retired') continue;
+    for (const criterion of Array.isArray(requirement.acceptance) ? requirement.acceptance : [])
+      if (record(criterion) && record(criterion.rule))
+        rules.push({ ...criterion.rule, id: `${requirement.id}/${criterion.id}`, description: criterion.text });
+  }
+  if (!rules.length) return null;
+  const context = schemaDomains(model.data.schemas?.context, record(model.data.context) ? model.data.context : {});
+  return { ...(Object.keys(context).length ? { context } : {}), rules };
+}
+
+// Only an omitted rules file falls back to the model; null is invalid rules input.
+const resolveRules = (modelInput, rulesInput) =>
+  rulesInput !== undefined ? rulesInput : rulesFromModel(modelInput) ?? fail('no rules: pass a rules file, or add rules to the acceptance criteria of the model\'s requirements');
+
 export function prepare({ model: modelInput, rules: rulesInput, xstate, limits }) {
   const model = normalizeModel(modelInput);
-  const rules = parseRules(rulesInput);
+  const rules = parseRules(resolveRules(modelInput, rulesInput));
   // `limits` lets a host cap the run below what the rules file asks for.
   if (limits?.maxStates) rules.bounds.maxStates = Math.min(rules.bounds.maxStates, limits.maxStates);
   if (limits?.timeoutMs) rules.bounds.timeoutMs = rules.bounds.timeoutMs ? Math.min(rules.bounds.timeoutMs, limits.timeoutMs) : limits.timeoutMs;
@@ -1047,8 +1096,11 @@ export function prepare({ model: modelInput, rules: rulesInput, xstate, limits }
 }
 
 // `clock` lets tests drive the time limits deterministically.
-export function check({ model: modelInput, rules: rulesInput, modelContent, rulesContent, modelPath = 'model.json', rulesPath = 'rules.json', xstate, limits, clock = () => performance.now() }) {
+export function check({ model: modelInput, rules: suppliedRules, modelContent, rulesContent, modelPath = 'model.json', rulesPath = 'rules.json', xstate, limits, clock = () => performance.now() }) {
   const started = clock();
+  // Rules derived from the model are bound through the model artifact.
+  const fromModel = suppliedRules === undefined;
+  const rulesInput = resolveRules(modelInput, suppliedRules);
   const { model, rules, diagnostics, engine, initialContexts, project, extracted } = prepare({ model: modelInput, rules: rulesInput, xstate, limits });
   // Evaluating rules is the only place the rule count costs work; TLA export and
   // trace conformance parse the same file without this cap.
@@ -1452,6 +1504,7 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
       : []),
     ...(extracted.skipped.length ? [`Inline code outside the supported expression subset stays unresolved: ${extracted.skipped.join('; ')}`] : []),
     ...(anyUnresolved ? [`Unresolved guards/actions explored both ways (over-approximation): ${unresolvedNote()}`] : []),
+    ...(fromModel ? ["Rules come from the model's acceptance criteria; context domains from its context schema."] : []),
     ...rules.assumptions,
   ];
   const result = parseCheckResult({
@@ -1460,13 +1513,13 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
     binding: {
       artifacts: [
         artifact('model', modelPath, modelContent ?? JSON.stringify(modelInput, null, 2) + '\n'),
-        artifact('scope', rulesPath, rulesContent ?? JSON.stringify(rulesInput, null, 2) + '\n'),
+        ...(fromModel ? [] : [artifact('scope', rulesPath, rulesContent ?? JSON.stringify(rulesInput, null, 2) + '\n')]),
       ],
     },
     checker: {
       name: CHECKER_NAME,
       version: CHECKER_VERSION,
-      command: ['native-check', modelPath, rulesPath],
+      command: fromModel ? ['native-check', modelPath] : ['native-check', modelPath, rulesPath],
       complete,
       bounds: {
         maxStates: rules.bounds.maxStates,
@@ -1661,17 +1714,18 @@ export async function main(argv) {
     allowPositionals: true,
     options: { out: { type: 'string' }, json: { type: 'boolean' }, offline: { type: 'boolean' } },
   });
-  if (positionals.length !== 2) fail('usage: native-check MODEL.json RULES.json --out DIR');
+  // Without RULES.json, the rules on the model's acceptance criteria are checked.
+  if (positionals.length < 1 || positionals.length > 2) fail('usage: native-check MODEL.json [RULES.json] --out DIR');
   const [modelPath, rulesPath] = positionals;
   const modelContent = await readFile(modelPath, 'utf8');
-  const rulesContent = await readFile(rulesPath, 'utf8');
+  const rulesContent = rulesPath === undefined ? undefined : await readFile(rulesPath, 'utf8');
   const run = check({
     model: JSON.parse(modelContent),
-    rules: JSON.parse(rulesContent),
+    rules: rulesContent === undefined ? undefined : JSON.parse(rulesContent),
     modelContent,
     rulesContent,
     modelPath: basename(modelPath),
-    rulesPath: basename(rulesPath),
+    ...(rulesPath === undefined ? {} : { rulesPath: basename(rulesPath) }),
     xstate: await loadCachedXState({ offline: values.offline === true }),
   });
   const graph = nativeGraph(run, JSON.parse(modelContent));

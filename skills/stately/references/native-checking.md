@@ -221,6 +221,36 @@ broken, and `2` when any rule is `not-checked`, exploration is incomplete, or th
 checker errors. When rules are both broken and `not-checked`, the exit code is
 `1`; read each rule's outcome in the report.
 
+## Rules on the model
+
+A saved model can hold its rules on the acceptance criteria of its requirements
+(`data.statelySpec`). Each criterion takes an optional `rule` with the fields of
+a rules-file rule except `id` and `description`:
+
+```json
+{
+  "id": "never-open-locked",
+  "text": "The door is never open while locked.",
+  "rule": { "kind": "never", "when": "in('open') && locked" }
+}
+```
+
+When no rules file is passed (no `--rules` and no `<model>.rules.json` beside
+the model), the checker builds one from the model:
+
+- Each rule on an acceptance criterion of a requirement that is not retired,
+  with id `<requirement id>/<criterion id>` and the criterion text as its
+  description.
+- A context domain for each field of the context schema (`data.schemas.context`)
+  that has an initial value in `data.context`: `integer` with `minimum` and
+  `maximum` becomes `{ min, max }`, `boolean` becomes `"bool"`, and `enum`
+  becomes its list of values.
+- Guards and actions from the model's implementations, as with a rules file.
+
+A rules file, when passed, is used as is. The result binds only the model, and
+`inputs/rules.json` holds the rules built from it. Save rules with
+`save_stately_models` requirements; `rule: null` removes one.
+
 ## Hosted checking
 
 When the host cannot run commands, the `check_machine` MCP tool (hosted API
@@ -228,7 +258,8 @@ route `/api/v1/check`) runs the same native checker with host limits: at most
 20000 states and 10 s of exploration, plus a separate 10 s window for rule
 evaluation. It takes `machine` (an XGraph or XState config, as an
 object or JSON text) plus `format`, or `source` as in `simulate_machine`, and
-`rules` (the rules-file object), with optional `limits`. It returns per-rule
+`rules` (the rules-file object; omit it to use the rules on the model), with
+optional `limits`. It returns per-rule
 verdicts, native traces, and a graph carrying the report. Save that graph with
 `save_stately_check_result`. TLA+ is not available hosted.
 
