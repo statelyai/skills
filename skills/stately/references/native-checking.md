@@ -93,7 +93,7 @@ Unknown top-level keys are rejected. Every key except `rules` is optional.
 | `actions` | Action name to `{ variable: expression }`. Every assigned variable needs a domain. All right-hand sides read the state before the step. |
 | `events` | Event type to `{ "payloads": [ {...}, ... ] }`. Each payload is a separate event. |
 | `fairness` | `"weak"` (default), `"none"`, or `{ "weak": [eventTypes] }`. |
-| `rules` | Non-empty list of rules with unique `id` values. Each rule may carry a `description`. |
+| `rules` | Non-empty list of rules with unique `id` values. Each rule may carry a `description`. A check evaluates at most 1000 rules and rejects a longer list. TLA+ export and trace conformance do not apply this cap. |
 | `bounds` | `maxStates` (default 50000), `timeoutMs` (default 0, which disables the wall-clock cap), and `maxAlwaysSteps` (default 50). |
 | `assumptions` | Strings copied into the report. |
 | `citations` | Guard name, action name, or transition (edge id) to a `"path:line"` or `"path:line-line"` string, or a list of them. A name that is not in the model or rules file stops checking. |
@@ -101,6 +101,19 @@ Unknown top-level keys are rejected. Every key except `rules` is optional.
 Startup guard exploration also uses `maxStates` as its replay budget and checks
 the wall-clock deadline before each replay. Reaching either limit leaves startup
 exploration incomplete.
+
+After startup, one event from one state may replay at most 1024 times to split
+unresolved guards, and the wall-clock deadline is checked before each replay.
+Reaching either limit leaves exploration incomplete. A state cut off before all
+of its events were tried is not reported as a dead end.
+
+Rule evaluation gets its own `timeoutMs` window after exploration, checked on
+every state a rule visits. The rule running when it expires and every later rule
+are `not-checked`, and the reason is in `checker.bounds.ruleIncompleteReason`.
+Rules decided earlier keep their verdicts. Stored counterexamples hold at most
+200000 states in total. A broken rule past that budget keeps its `broken`
+outcome without a counterexample, its reason says so, and the failing state
+still lists it in `violations`.
 
 When exploration stops early at a bound, unproved rules are `not-checked` and the
 reason is in `checker.bounds.incompleteReason`.
@@ -212,7 +225,8 @@ checker errors. When rules are both broken and `not-checked`, the exit code is
 
 When the host cannot run commands, the `check_machine` MCP tool (hosted API
 route `/api/v1/check`) runs the same native checker with host limits: at most
-20000 states and 10 s. It takes `machine` (an XGraph or XState config, as an
+20000 states and 10 s of exploration, plus a separate 10 s window for rule
+evaluation. It takes `machine` (an XGraph or XState config, as an
 object or JSON text) plus `format`, or `source` as in `simulate_machine`, and
 `rules` (the rules-file object), with optional `limits`. It returns per-rule
 verdicts, native traces, and a graph carrying the report. Save that graph with
