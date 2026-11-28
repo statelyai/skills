@@ -235,8 +235,10 @@ function analyze(model) {
     } else {
       info.domainId = domain.id;
       info.exitNodes = [...descendants.get(domain.id)];
-      if (edge.reenter && source.id === domain.id) info.exitNodes.push(domain.id);
-      info.exitBelow = below.get(domain.id);
+      const exitsDomain = edge.reenter && source.id === domain.id;
+      if (exitsDomain) info.exitNodes.push(domain.id);
+      // A non-reentering self-transition on an atomic state neither exits nor re-enters it.
+      info.exitBelow = domain.children.length || exitsDomain ? below.get(domain.id) : [];
     }
     const entered = new Set();
     for (const target of edge.targetIds) {
@@ -278,6 +280,10 @@ export function exportNativeTla({ model: modelInput, rules: rulesInput, module =
   const started = performance.now();
   const model = normalizeModel(modelInput);
   const rules = parseRules(rulesInput);
+  // A wildcard handles every event the state has no exact handler for; the selector
+  // tables match exact event types only.
+  const wildcard = model.edges.find((edge) => edge.eventType === '*' || edge.eventType.endsWith('.*'));
+  if (wildcard) fail(`edge ${wildcard.id}: wildcard event ${wildcard.eventType} is not supported`);
   const shape = analyze(model);
   const lines = [];
   const emit = (...text) => lines.push(...text);

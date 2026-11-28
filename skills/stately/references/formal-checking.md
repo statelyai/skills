@@ -302,8 +302,10 @@ for each listed event; `none` adds no fairness.
 Rejected, with the reason in the error: a guard or assignment without an
 expression, history and choice states, `event.*` outside a handler whose event
 declares that payload field, truthiness or mixed-type comparisons, real numbers,
-more than one no-dead-ends rule, and transitions in different parallel regions
-that can fire together with overlapping exit sets. Preserve the model instead of
+more than one no-dead-ends rule, wildcard events (`*` and `prefix.*`),
+transition context updates and `xstate.raise` actions (both also stop the native
+checker), and transitions in different parallel regions that can fire together
+with overlapping exit sets. Preserve the model instead of
 deleting semantic fields to force an export; the native checker can still check
 it.
 

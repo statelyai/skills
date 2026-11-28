@@ -216,6 +216,13 @@ export function evaluate(ast, scope) {
 //   edge { id, sourceId, targetIds[], eventType, guard, actions[], internal, order }
 // ---------------------------------------------------------------------------
 
+// Editor XGraphs name state completion `@statelyai.state.done.<node id>` (legacy
+// `@stately.`); the checker and exporter use the XState event type.
+const canonicalEventType = (eventType) => eventType.replace(/^@stately(?:ai)?\.state\.done\./, 'xstate.done.state.');
+
+// Built-in actions that enqueue an event change the macrostep; neither engine models them.
+const EVENT_QUEUE_ACTIONS = new Set(['xstate.raise', 'raise']);
+
 function normalizeXGraph(graph) {
   if (!Array.isArray(graph.nodes) || !Array.isArray(graph.edges))
     fail('XGraph needs nodes and edges arrays');
@@ -241,19 +248,28 @@ function normalizeXGraph(graph) {
       always: [],
     });
   }
-  const edges = graph.edges.map((edge, order) => ({
+  // Graph-level startup applies where node data names no initial child; the root id
+  // itself means no startup override.
+  const startup = typeof graph.initialNodeId === 'string' ? nodes.get(graph.initialNodeId) : undefined;
+  for (let child = startup, parent = startup && nodes.get(startup.parentId); parent; child = parent, parent = nodes.get(parent.parentId))
+    parent.initialId ??= child.id;
+  const edges = graph.edges.map((edge, order) => {
+    if (edge.data?.context != null)
+      fail(`edge ${edge.id} updates context in its transition; move the update to a named action with an assignment in the rules file`);
+    return {
     id: edge.id,
     sourceId: edge.sourceId,
     targetIds:
       edge.data?.transitionType === 'targetless'
         ? []
         : [edge.targetId, ...(edge.data?.additionalTargetIds ?? [])].filter(Boolean),
-    eventType: edge.data?.eventType ?? '',
+    eventType: canonicalEventType(edge.data?.eventType ?? ''),
     guard: edge.data?.guard ?? null,
     actions: actions(edge.data?.actions, `edge ${edge.id}`),
     reenter: edge.data?.transitionType === 'reenter',
     order,
-  }));
+    };
+  });
   const implementations = record(graph.data?.implementations) ? graph.data.implementations : {};
   const initialContext = record(graph.data?.context) ? graph.data.context : {};
   return finishTree(nodes, edges, initialContext, implementations);
@@ -363,7 +379,16 @@ function finishTree(nodes, edges, initialContext = {}, implementations = {}) {
         fail(`initial ${node.initialId} is not a child of ${node.id}`);
     }
   }
+  const rejectQueued = (list, owner) => {
+    const queued = list.find((action) => EVENT_QUEUE_ACTIONS.has(action.type));
+    if (queued) fail(`${owner}: ${queued.type} raises an event inside the macrostep, which is not supported`);
+  };
+  for (const node of nodes.values()) {
+    rejectQueued(node.entry, `node ${node.id} entry`);
+    rejectQueued(node.exit, `node ${node.id} exit`);
+  }
   for (const edge of edges) {
+    rejectQueued(edge.actions, `edge ${edge.id}`);
     if (!nodes.has(edge.sourceId)) fail(`edge ${edge.id} has unknown source`);
     for (const target of edge.targetIds)
       if (!nodes.has(target)) fail(`edge ${edge.id} has unknown target ${target}`);

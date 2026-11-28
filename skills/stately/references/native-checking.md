@@ -48,6 +48,15 @@ In XGraph, entry, exit, and transition actions must be arrays of objects with a
 non-empty `type`, such as `[{ "type": "markSaved" }]`. A malformed action list
 stops checking before exploration.
 
+XGraph startup comes from each node's `data.initialId`. Where a node names no
+initial child, the graph's `initialNodeId` selects startup along its ancestors.
+Editor completion references (`@statelyai.state.done.<node id>`) are read as the
+state's `xstate.done.state.<node id>` event. A transition that updates `context`
+directly, without a named action, and an `xstate.raise` action stop checking
+with the edge or node in the error: neither is modeled, so a verdict would not
+describe the source. Move a context update into a named action with an
+assignment in the rules file.
+
 ## What the checker covers
 
 - Statechart semantics come from XState v6 pure transition functions:
