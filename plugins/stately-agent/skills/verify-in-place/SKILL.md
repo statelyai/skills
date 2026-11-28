@@ -28,15 +28,15 @@ Worked example: [examples/verify-in-place](https://github.com/statelyai/agent/tr
 
 The check records the code's side effects without editing it.
 
-| The code | Record with |
-| --- | --- |
-| Side effects go through one object or injected functions | `recorder.fn(name, fn)` around each function |
-| It calls an SDK client it receives | `recorder.client(name, client, { methods })` |
-| It receives an AI SDK model | `recorder.model(standIn)` (no name argument), plus the AI SDK recipe below so retries are attributed |
-| It builds an AI SDK model inline, or passes module-level tools to `generateText` | The AI SDK recipe below |
-| Other side effects are module imports with no injection point | Module mocks in the test (`vi.mock`) that wrap the real functions with `recorder.fn` |
-| A framework takes an AI SDK model through its own adapter (openai-agents `aisdk(model)`) | `recorder.model(standIn)` passed to that adapter and set as the framework's default model. Every agent the scenario builds must resolve to the stand-in: override each agent's own `model` with it, and mock the provider packages (`vi.mock("@ai-sdk/openai")`) to throw, so a call to any other model fails the scenario |
-| It does its work when imported (calls `main()`, reads stdin, calls `process.exit`) | Mock stdin (`node:readline`) and `process.exit`, call `vi.resetModules()`, then a dynamic `import()` per scenario (a cached module does not run `main()` again); keep seam state on `globalThis` so it survives the reset. `import()` can resolve while an unawaited `main()` still runs, so wait for a completion signal (the mocked `process.exit`, or the last mocked effect resolving a promise) before reading the recording or starting the next scenario. The mocked `process.exit` must stop execution at the call, so nothing after it runs or is recorded, and its exit code is the scenario's outcome. When the script calls `process.exit` itself, run each scenario in a child process and read its exit code |
+| The code                                                                                 | Record with                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Side effects go through one object or injected functions                                 | `recorder.fn(name, fn)` around each function                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| It calls an SDK client it receives                                                       | `recorder.client(name, client, { methods })`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| It receives an AI SDK model                                                              | `recorder.model(standIn)` (no name argument), plus the AI SDK recipe below so retries are attributed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| It builds an AI SDK model inline, or passes module-level tools to `generateText`         | The AI SDK recipe below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Other side effects are module imports with no injection point                            | Module mocks in the test (`vi.mock`) that wrap the real functions with `recorder.fn`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| A framework takes an AI SDK model through its own adapter (openai-agents `aisdk(model)`) | `recorder.model(standIn)` passed to that adapter and set as the framework's default model. Every agent the scenario builds must resolve to the stand-in: override each agent's own `model` with it, and mock the provider packages (`vi.mock("@ai-sdk/openai")`) to throw, so a call to any other model fails the scenario                                                                                                                                                                                                                                                                                                                                                                                                 |
+| It does its work when imported (calls `main()`, reads stdin, calls `process.exit`)       | Mock stdin (`node:readline`) and `process.exit`, call `vi.resetModules()`, then a dynamic `import()` per scenario (a cached module does not run `main()` again); keep seam state on `globalThis` so it survives the reset. `import()` can resolve while an unawaited `main()` still runs, so wait for a completion signal (the mocked `process.exit`, or the last mocked effect resolving a promise) before reading the recording or starting the next scenario. The mocked `process.exit` must stop execution at the call, so nothing after it runs or is recorded, and its exit code is the scenario's outcome. When the script calls `process.exit` itself, run each scenario in a child process and read its exit code |
 
 **AI SDK code.** Mock `"ai"` with `recordAiSdk`: each `generateText` and `streamText` call runs on the real AI SDK with the seam's model in place of the code's, and its tools wrapped with `recorder.tools`. The code's own tool loop runs, and the provider needs no mock:
 
@@ -76,14 +76,18 @@ const placeholder = <I, O>(input: z.ZodType<I>, output: z.ZodType<O>) =>
 
 export const refundModel = setupAgent({
   input: z.object({ orderId: z.string() }),
-  context: z.object({ /* what the control flow reads */ }),
+  context: z.object({
+    /* what the control flow reads */
+  }),
   events: { APPROVE: {}, REJECT: {} },
   actors: {
     lookupOrder: placeholder(z.object({ orderId: z.string() }), orderSchema),
     decide: placeholder(z.object({ order: orderSchema }), decisionSchema),
     issueRefund: placeholder(z.object({ orderId: z.string(), amount: z.number() }), z.undefined()),
   },
-}).createMachine({ /* states */ });
+}).createMachine({
+  /* states */
+});
 ```
 
 - One named actor per unit of work, invoked by `src`. Never inline actor logic in `invoke.src`: `checkConformance` rejects it, because it would run.
@@ -114,10 +118,20 @@ const toObservations = (recording: Recording) =>
     if (effect.kind === "output") return [{ kind: "returned", outcome: effect.value }];
     if (effect.kind !== "call") return []; // add cases for "model" and "tool" when the seam records them
     switch (effect.name) {
-      case "decide": return [{ kind: "decision", decision: effect.result as Decision }];
-      case "requestApproval": return [{ kind: "approval", approved: effect.result as boolean, amount: (effect.args as [{ amount: number }])[0].amount }];
-      case "issueRefund": return [{ kind: "refund", ...(effect.args as [{ orderId: string; amount: number }])[0] }];
-      default: return [{ kind: `unmapped:${effect.name}` }]; // a call the mapping does not know deviates
+      case "decide":
+        return [{ kind: "decision", decision: effect.result as Decision }];
+      case "requestApproval":
+        return [
+          {
+            kind: "approval",
+            approved: effect.result as boolean,
+            amount: (effect.args as [{ amount: number }])[0].amount,
+          },
+        ];
+      case "issueRefund":
+        return [{ kind: "refund", ...(effect.args as [{ orderId: string; amount: number }])[0] }];
+      default:
+        return [{ kind: `unmapped:${effect.name}` }]; // a call the mapping does not know deviates
     }
   });
 ```
@@ -136,21 +150,24 @@ const report = await checkConformance(refundModel, {
     decide: { observes: "decision", output: ({ observation }) => observation.decision },
     issueRefund: {
       observes: "refund",
-      matches: ({ input, observation }) => input.orderId === observation.orderId && input.amount === observation.amount,
+      matches: ({ input, observation }) =>
+        input.orderId === observation.orderId && input.amount === observation.amount,
     },
     save: {}, // the recording cannot see it
   },
   events: {
     approval: {
       event: (o) => ({ type: o.approved ? "APPROVE" : "REJECT" }),
-      matches: ({ observation, context }) => observation.amount === (context as { amount: number }).amount,
+      matches: ({ observation, context }) =>
+        observation.amount === (context as { amount: number }).amount,
     },
   },
   output: {
     observes: "returned",
     // Here the code returns a string ("refunded") and the model's output is { outcome: "refunded" }.
     // Compare the same values: unwrap whichever side wraps them, or compare whole objects by value.
-    matches: ({ output, observation }) => (output as { outcome: string }).outcome === observation.outcome,
+    matches: ({ output, observation }) =>
+      (output as { outcome: string }).outcome === observation.outcome,
   },
 });
 expect(report.deviation).toBeUndefined();
