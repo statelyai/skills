@@ -18,6 +18,7 @@ import { parseArgs } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { toolchainCache, PROGRESS_PREFIX } from './toolchain.mjs';
 import { artifact, parseCheckResult, sha256 } from './check-result.mjs';
+import { workspaceName, workspacePath } from './workspace-path.mjs';
 import { attachReport, checkReport, projectedView } from './checked-view.mjs';
 import { shareableDiagnostic } from './diagnostics.mjs';
 import { completeHumanReport, parseCheckScope } from './check-scope.mjs';
@@ -340,14 +341,14 @@ export async function runCheck({
     offline,
     shareDocuments,
     recheck: {
-      specPath: originalSpec,
-      configPath: originalConfig,
-      ...(originalView ? { viewPath: originalView } : {}),
-      ...(originalScope ? { scopePath: originalScope } : {}),
-      workingDirectory: process.cwd(),
-      sourcePaths: sources.map((file) => resolve(file)),
+      specPath: workspacePath(originalSpec),
+      configPath: workspacePath(originalConfig),
+      ...(originalView ? { viewPath: workspacePath(originalView) } : {}),
+      ...(originalScope ? { scopePath: workspacePath(originalScope) } : {}),
+      workingDirectory: workspaceName(),
+      sourcePaths: sources.map((file) => workspacePath(file)),
       sourceFiles: [],
-      resultPath: join(output, 'check-result.json'),
+      resultPath: workspacePath(join(output, 'check-result.json')),
     },
   };
   const bindInput = (role, path, sourceFile, content) => {

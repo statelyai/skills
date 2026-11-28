@@ -4,6 +4,7 @@ import { lstat, mkdir, readFile, readdir, realpath, stat, writeFile } from 'node
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
 import { artifact, parseCheckResult } from './check-result.mjs';
+import { workspaceName, workspacePath } from './workspace-path.mjs';
 import { attachReport } from './checked-view.mjs';
 import { completeHumanReport, parseCheckScope } from './check-scope.mjs';
 import { CHECKER_NAME, CHECKER_VERSION, check, checkReport, humanReport, loadCachedXState, nativeCheckExitCode, nativeGraph } from './native-check.mjs';
@@ -102,18 +103,18 @@ export async function runNativeCheck({ model, rules, scope, out, offline = false
   });
   const result = run.result;
   const recheck = {
-    specPath: modelPath,
-    configPath: rulesPath,
-    modelPath,
-    rulesPath,
-    ...(scopePath ? { scopePath } : {}),
-    workingDirectory: process.cwd(),
-    sourcePaths: sources.map((file) => resolve(file)),
+    specPath: workspacePath(modelPath),
+    configPath: workspacePath(rulesPath),
+    modelPath: workspacePath(modelPath),
+    rulesPath: workspacePath(rulesPath),
+    ...(scopePath ? { scopePath: workspacePath(scopePath) } : {}),
+    workingDirectory: workspaceName(),
+    sourcePaths: sources.map((file) => workspacePath(file)),
     sourceFiles: [
       { path: 'inputs/model.json', sourcePath: posix(modelPath) },
       { path: 'inputs/rules.json', sourcePath: posix(rulesPath) },
     ],
-    resultPath: join(output, 'check-result.json'),
+    resultPath: workspacePath(join(output, 'check-result.json')),
   };
   const bind = (role, path, file, content) => {
     result.binding.artifacts.push(artifact(role, path, content));

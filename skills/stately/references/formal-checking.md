@@ -197,7 +197,7 @@ checker artifacts remain unchanged. Keep complete test output locally and cite
 it. Model playback and application tests stay distinct.
 
 `freshness` resolves `recheck.sourceFiles` inside the chosen physical workspace
-using that workspace as the base for relative source paths, and emits ready-to-use `currentArtifacts` for `get_stately_check_result`. Select the equivalent project root to compare a moved or second checkout; the recorded original working directory remains provenance. Missing
+using that workspace as the base for relative source paths, and emits ready-to-use `currentArtifacts` for `get_stately_check_result`. Select the equivalent project root to compare a moved or second checkout. All `recheck` paths are relative to the workspace root, and `recheck.workingDirectory` is only the workspace folder name; Stately never stores absolute local paths and strips them from older reports. Missing
 files are stale; absent mappings remain unknown. It rejects traversal and
 symlink escapes instead of following paths into another checkout. The explicit workspace argument selects both the coordinate root and permitted reads. Never broaden
 the workspace just to satisfy a saved path. Compared hashes describe that point

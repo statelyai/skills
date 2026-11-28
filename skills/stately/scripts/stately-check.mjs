@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { basename, join, resolve } from 'node:path';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { realpathSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { artifact, parseCheckResult, resultToXGraph } from './check-result.mjs';
+import { workspacePath } from './workspace-path.mjs';
 import { importTlcTrace, importTlcDot } from './tlc-import.mjs';
 import { exportNativeTla, moduleName } from './native-tla.mjs';
 
@@ -213,7 +214,7 @@ export async function main(args) {
       sha256: (await import('./check-result.mjs')).sha256(content),
     };
     const recheck = result.recheck
-      ? { ...result.recheck, resultPath: resolve(paths[0]) }
+      ? { ...result.recheck, resultPath: workspacePath(paths[0]) }
       : undefined;
     await writeJson(
       paths[1],
