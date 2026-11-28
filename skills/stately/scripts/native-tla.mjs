@@ -18,7 +18,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
-import { normalizeModel, parseRules } from './native-check.mjs';
+import { mergeImplementations, normalizeModel, parseRules } from './native-check.mjs';
 
 export const EXPORTER_NAME = 'stately-native-tla-export';
 export const EXPORTER_VERSION = '1.0.0';
@@ -163,7 +163,7 @@ function inferType(ast, env, where) {
 // Static structure: document order, descendants, transition domains, entry sets.
 // ---------------------------------------------------------------------------
 
-function analyze(model) {
+export function analyze(model) {
   const order = new Map();
   const docOrder = [];
   const visit = (node) => {
@@ -235,8 +235,10 @@ function analyze(model) {
     } else {
       info.domainId = domain.id;
       info.exitNodes = [...descendants.get(domain.id)];
-      if (edge.reenter && source.id === domain.id) info.exitNodes.push(domain.id);
-      info.exitBelow = below.get(domain.id);
+      const exitsDomain = edge.reenter && source.id === domain.id;
+      if (exitsDomain) info.exitNodes.push(domain.id);
+      // A non-reentering self-transition on an atomic state neither exits nor re-enters it.
+      info.exitBelow = domain.children.length || exitsDomain ? below.get(domain.id) : [];
     }
     const entered = new Set();
     for (const target of edge.targetIds) {
@@ -269,6 +271,47 @@ function analyze(model) {
   return { order, docOrder, below, descendants, isDescendant, properAncestors, edges, initial };
 }
 
+/**
+ * Two targeted edges that XState can select in one microstep with overlapping exit
+ * sets, where its preemption order decides which one runs. Neither exporter encodes
+ * preemption, so both reject these pairs. Returns [a, b] or null.
+ *   - Edges in different regions of a parallel state, for the same event.
+ *   - Eventless edges whose sources are ancestor and descendant with a parallel
+ *     state between them: one region's leaf selects the descendant's edge while
+ *     another region's leaf walks up to the ancestor's edge.
+ */
+export function conflictingPair(model, shape) {
+  const overlap = (a, b) => {
+    const da = a.domainId ?? model.root.id, db = b.domainId ?? model.root.id;
+    return da === db || shape.isDescendant(da, db) || shape.isDescendant(db, da);
+  };
+  for (const a of shape.edges)
+    for (const b of shape.edges) {
+      if (a.index >= b.index || !a.edge.targetIds.length || !b.edge.targetIds.length) continue;
+      if (a.edge.eventType !== b.edge.eventType) continue;
+      const sa = a.edge.sourceId, sb = b.edge.sourceId;
+      if (sa === sb) continue;
+      if (shape.isDescendant(sa, sb) || shape.isDescendant(sb, sa)) {
+        if (a.edge.eventType !== '') continue; // tree-wise selection consults a descendant first
+        const [top, bottom] = shape.isDescendant(sb, sa) ? [sa, sb] : [sb, sa];
+        let parallelBetween = false;
+        for (let id = model.nodes.get(bottom).parentId; id; id = model.nodes.get(id).parentId) {
+          if (model.nodes.get(id).type === 'parallel') parallelBetween = true;
+          if (id === top) break;
+        }
+        if (parallelBetween && overlap(a, b)) return [a, b];
+        continue;
+      }
+      // Both sources are active together only when their least common ancestor is parallel.
+      const lca = shape.properAncestors(model.nodes.get(sa)).find((ancestor) => shape.isDescendant(sb, ancestor.id));
+      if (lca?.type === 'parallel' && overlap(a, b)) return [a, b];
+    }
+  return null;
+}
+
+/** Node ids after `node` in document order: the entries XState has not processed yet. */
+export const enteredLater = (shape, node) => shape.docOrder.slice(shape.order.get(node.id) + 1).map((later) => later.id);
+
 // ---------------------------------------------------------------------------
 // Generator.
 // ---------------------------------------------------------------------------
@@ -278,6 +321,11 @@ export function exportNativeTla({ model: modelInput, rules: rulesInput, module =
   const started = performance.now();
   const model = normalizeModel(modelInput);
   const rules = parseRules(rulesInput);
+  mergeImplementations(model, rules);
+  // A wildcard handles every event the state has no exact handler for; the selector
+  // tables match exact event types only.
+  const wildcard = model.edges.find((edge) => edge.eventType === '*' || edge.eventType.endsWith('.*'));
+  if (wildcard) fail(`edge ${wildcard.id}: wildcard event ${wildcard.eventType} is not supported`);
   const shape = analyze(model);
   const lines = [];
   const emit = (...text) => lines.push(...text);
@@ -434,7 +482,7 @@ export function exportNativeTla({ model: modelInput, rules: rulesInput, module =
   const actionBlocks = (actions, owner, scope) => {
     const blocks = [];
     for (const action of actions) {
-      const name = action?.type;
+      const name = action?.resolvedType ?? action?.type;
       const assignments = rules.actions[name];
       if (!assignments) {
         if (name === 'xstate.assign' || name === 'assign' || name === undefined)
@@ -461,15 +509,21 @@ export function exportNativeTla({ model: modelInput, rules: rulesInput, module =
   const nodeName = new Map(shape.docOrder.map((node, index) => [node.id, `N${index}`]));
   for (const node of exitNodes) emit(`Exit_${nodeName.get(node.id)}(pre, c, ev) == ${chain(actionBlocks(node.exit, `exit of ${node.id}`, nodeScope))}`);
   for (const node of entryNodes) emit(`Entry_${nodeName.get(node.id)}(pre, c, ev) == ${chain(actionBlocks(node.entry, `entry of ${node.id}`, nodeScope))}`);
-  const actionEdges = shape.edges.filter((info) => info.edge.actions.length);
-  for (const info of actionEdges) {
+  // Only edges that assign; XState replaces the context with each one's result.
+  const actionEdges = [];
+  for (const info of shape.edges) {
     const blocks = actionBlocks(info.edge.actions, `edge ${info.edge.id}`, scopeFor(info.edge));
+    if (!blocks.length) continue;
+    actionEdges.push(info);
     emit(`Act_${info.index}(pre, c, ev) == ${chain(blocks)}`);
   }
   emit(
     `ExitChain(exited, pre, c, ev) == ${exitNodes.length ? chain(exitNodes.map((node) => `IF ${str(node.id)} \\in exited THEN Exit_${nodeName.get(node.id)}(pre, @C@, ev) ELSE @C@`)) : 'c'}`,
     `EntryChain(entered, pre, c, ev) == ${entryNodes.length ? chain(entryNodes.map((node) => `IF ${str(node.id)} \\in entered THEN Entry_${nodeName.get(node.id)}(pre, @C@, ev) ELSE @C@`)) : 'c'}`,
-    `ActChain(S, pre, c, ev) == ${actionEdges.length ? chain(actionEdges.map((info) => `IF ${info.index} \\in S THEN Act_${info.index}(pre, @C@, ev) ELSE @C@`)) : 'c'}`,
+    // Each selected edge's assignments read the context from before the microstep (c0);
+    // its result replaces the context after the exit actions, in edge order.
+    `ActChain(S, pre, c0, c, ev) == ${actionEdges.length ? chain(actionEdges.map((info) => `IF ${info.index} \\in S THEN Act_${info.index}(pre, c0, ev) ELSE @C@`)) : 'c'}`,
+    `AssignEdges == ${set(actionEdges.map((info) => String(info.index)))}`,
     '',
   );
 
@@ -496,12 +550,15 @@ export function exportNativeTla({ model: modelInput, rules: rulesInput, module =
     for (let marker = parent.type === 'parallel' ? parent : model.nodes.get(parent.parentId); marker && marker.type === 'parallel'; marker = model.nodes.get(marker.parentId)?.type === 'parallel' ? model.nodes.get(marker.parentId) : model.nodes.get(model.nodes.get(marker.parentId)?.parentId))
       cascade.push(marker);
     let expr = parts.length ? parts[0] : '@Q@';
+    // XState enters states in document order and checks a parallel ancestor against the
+    // states entered so far, so states entered after this final do not count yet.
+    const running = `(cf2 \\ (entered \\cap ${strSet(enteredLater(shape, final))}))`;
     if (cascade.length) {
       // Nested IFs: each parallel ancestor is raised only if the previous ones were and it is now final.
       const level = (i, queue) => {
         if (i === cascade.length) return queue;
         const next = `r${i + 2}`;
-        const guard = `${inFinalExpr('cf2', cascade[i])} /\\ ~(\\E k \\in 1..Len(${queue}) : ${queue}[k] = ${str(cascade[i].id)})`;
+        const guard = `${inFinalExpr(running, cascade[i])} /\\ ~(\\E k \\in 1..Len(${queue}) : ${queue}[k] = ${str(cascade[i].id)})`;
         return `IF ${guard} THEN (LET ${next} == Append(${queue}, ${str(cascade[i].id)}) IN ${level(i + 1, next)}) ELSE ${queue}`;
       };
       expr = `LET r1 == ${expr} IN ${level(0, 'r1')}`;
@@ -515,15 +572,18 @@ export function exportNativeTla({ model: modelInput, rules: rulesInput, module =
   // --- firing a set of edges ----------------------------------------------------------
   emit(
     '\\* Fire(S, cf, pre, c, ev): exit actions (deepest first), transition actions, entry actions;',
-    '\\* returns <<configuration, context, raised done events>>.',
+    '\\* returns <<configuration, context, raised done events, changed>>. XState keeps selecting',
+    '\\* eventless transitions while a microstep makes a new snapshot: states changed, or an',
+    '\\* assignment ran (even one that writes the same value).',
     'Fire(S, cf, pre, c, ev) ==',
     '  LET exited == {n \\in ActiveNodes(cf) : \\E i \\in S : n \\in EExit[i]}',
     '      entered == UNION {EEnterNodes[i] : i \\in S}',
     '      cf2 == (cf \\ UNION {EBelow[i] : i \\in S}) \\cup UNION {EEnter[i] : i \\in S}',
     '      c1 == ExitChain(exited, pre, c, ev)',
-    '      c2 == ActChain(S, pre, c1, ev)',
+    '      c2 == ActChain(S, pre, c, c1, ev)',
     '      c3 == EntryChain(entered, pre, c2, ev)',
-    '  IN <<cf2, c3, Raised(entered, cf2)>>',
+    '      changed == cf2 /= cf \\/ exited /= {} \\/ entered /= {} \\/ (S \\cap AssignEdges) /= {}',
+    '  IN <<cf2, c3, Raised(entered, cf2), changed>>',
     '',
   );
 
@@ -581,21 +641,9 @@ export function exportNativeTla({ model: modelInput, rules: rulesInput, module =
     `SelQueue(d, cf, pre, c, ev) == ${doneEvents.length ? `CASE ${doneEvents.map((event) => `d = ${str(event.slice('xstate.done.state.'.length))} -> ${treeSelectors.get(event)}(cf, pre, c, ev)`).join(' [] ')} [] OTHER -> {}` : '{}'}`,
     '',
   );
-  // Conflicting co-selected transitions (two parallel regions whose domains overlap) use
-  // XState's iterative preemption; the spike rejects models where that can arise.
-  for (const a of shape.edges)
-    for (const b of shape.edges) {
-      if (a.index >= b.index || !a.edge.targetIds.length || !b.edge.targetIds.length) continue;
-      if (a.edge.eventType !== b.edge.eventType) continue;
-      const sa = a.edge.sourceId, sb = b.edge.sourceId;
-      if (sa === sb || shape.isDescendant(sa, sb) || shape.isDescendant(sb, sa)) continue;
-      // Both sources are active together only when their least common ancestor is parallel.
-      const lca = shape.properAncestors(model.nodes.get(sa)).find((ancestor) => shape.isDescendant(sb, ancestor.id));
-      if (!lca || lca.type !== 'parallel') continue;
-      const da = a.domainId ?? model.root.id, db = b.domainId ?? model.root.id;
-      if (da === db || shape.isDescendant(da, db) || shape.isDescendant(db, da))
-        fail(`edges ${a.edge.id} and ${b.edge.id} can fire together from different regions with overlapping exit sets; XState's preemption order is not encoded`);
-    }
+  const conflict = conflictingPair(model, shape);
+  if (conflict)
+    fail(`edges ${conflict[0].edge.id} and ${conflict[1].edge.id} can fire together with overlapping exit sets; XState's preemption order is not encoded`);
 
   // --- the settle loop ---------------------------------------------------------------------
   emit(
@@ -610,10 +658,10 @@ export function exportNativeTla({ model: modelInput, rules: rulesInput, module =
     '  ELSE LET A == IF sel THEN SelAlways(cf, pre, c, ev) ELSE {} IN',
     '    IF A /= {} THEN',
     '      LET r == Fire(A, cf, pre, c, ev) IN',
-    '      Settle(r[1], r[2], pre, ev, q \\o r[3], r[1] /= cf \\/ r[2] /= c, n - 1)',
+    '      Settle(r[1], r[2], pre, ev, q \\o r[3], r[4], n - 1)',
     '    ELSE IF q = <<>> THEN <<cf, c>>',
     '    ELSE LET d == Head(q)',
-    '             dev == [type |-> "xstate.done.state." \\o d]',
+    '             dev == [type |-> "xstate.done.state"]',
     '             S == SelQueue(d, cf, pre, c, dev)',
     '         IN IF S = {} THEN Settle(cf, c, pre, ev, Tail(q), sel, n - 1)',
     '            ELSE LET r == Fire(S, cf, pre, c, dev) IN',
@@ -650,8 +698,9 @@ export function exportNativeTla({ model: modelInput, rules: rulesInput, module =
       '  /\\ ~Terminal(conf)',
       `  /\\ \\E ev \\in Payloads_${name} :`,
       `       LET S == ${treeSelectors.get(event)}(conf, conf, Ctx, ev) IN`,
-      '       /\\ S /= {}',
-      '       /\\ LET r == Fire(S, conf, conf, Ctx, ev)',
+      '       \\* An unhandled event still runs eventless transitions, which read in() against conf.',
+      '       /\\ (S /= {} \\/ SelAlways(conf, conf, Ctx, ev) /= {})',
+      '       /\\ LET r == IF S /= {} THEN Fire(S, conf, conf, Ctx, ev) ELSE <<conf, Ctx, <<>>, TRUE>>',
       '              f == Settle(r[1], r[2], conf, ev, r[3], TRUE, Bound)',
       `          IN ${['conf\' = f[1]', ...assign('f[2]')].join(' /\\ ')}`,
     );

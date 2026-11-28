@@ -1,5 +1,6 @@
-import { basename, resolve } from 'node:path';
+import { basename } from 'node:path';
 import { parseCheckResult, sha256 } from './check-result.mjs';
+import { workspacePath } from './workspace-path.mjs';
 import { projectedView, checkReport, attachReport } from './checked-view.mjs';
 const prefix = (path, parent) =>
   parent.every((part, index) => path[index] === part);
@@ -92,7 +93,7 @@ export function selectCheckView(
     ? `Native view shows ${result.counterexamples.length} of ${full.counterexamples.length} counterexamples. Omitted from this view: ${omitted.map((trace) => trace.id).join(', ') || 'none'}. All original rule verdicts remain unchanged; complete evidence is in ${basename(resultPath)}. This renders the recorded run without executing a new check.`
     : 'Native view of the recorded checker result. This renders existing evidence without executing a new check.';
   const report = checkReport(result, graph, { summary });
-  if (report.recheck) report.recheck.resultPath = resolve(resultPath);
+  if (report.recheck) report.recheck.resultPath = workspacePath(resultPath);
   report.artifacts.push({
     role: 'result',
     path: basename(resultPath),

@@ -97,7 +97,8 @@ Read the relevant source, contracts, and tests first. Then:
 2. With a signed-in connection, save with `save_stately_models`: one machine
    per flow, stable IDs, hierarchy, guards, actions, actors, and per-entity
    evidence that cites repository-relative line ranges plus the exact source
-   snapshot and physical working directory. Mark each item observed, inferred,
+   snapshot and the project folder name as `workingDirectory` (never an
+   absolute path). Mark each item observed, inferred,
    or assumed. First call `validate_machine` with
    `{ format: "xgraph", machine: graph }` when available, then
    `visualize_machine` with the same input only when the user asks to see

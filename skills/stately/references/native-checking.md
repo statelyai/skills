@@ -48,6 +48,15 @@ In XGraph, entry, exit, and transition actions must be arrays of objects with a
 non-empty `type`, such as `[{ "type": "markSaved" }]`. A malformed action list
 stops checking before exploration.
 
+XGraph startup comes from each node's `data.initialId`. Where a node names no
+initial child, the graph's `initialNodeId` selects startup along its ancestors.
+Editor completion references (`@statelyai.state.done.<node id>`) are read as the
+state's `xstate.done.state.<node id>` event. A transition that updates `context`
+directly, without a named action, and an `xstate.raise` action stop checking
+with the edge or node in the error: neither is modeled, so a verdict would not
+describe the source. Move a context update into a named action with an
+assignment in the rules file.
+
 ## What the checker covers
 
 - Statechart semantics come from XState v6 pure transition functions:
@@ -93,14 +102,27 @@ Unknown top-level keys are rejected. Every key except `rules` is optional.
 | `actions` | Action name to `{ variable: expression }`. Every assigned variable needs a domain. All right-hand sides read the state before the step. |
 | `events` | Event type to `{ "payloads": [ {...}, ... ] }`. Each payload is a separate event. |
 | `fairness` | `"weak"` (default), `"none"`, or `{ "weak": [eventTypes] }`. |
-| `rules` | Non-empty list of rules with unique `id` values. Each rule may carry a `description`. |
-| `bounds` | `maxStates` (default 50000), `timeoutMs` (default 0, which disables the wall-clock cap), and `maxAlwaysSteps` (default 50). |
+| `rules` | Non-empty list of rules with unique `id` values. Each rule may carry a `description`. A check evaluates at most 1000 rules and rejects a longer list. TLA+ export, Lean export and trace conformance do not apply this cap. |
+| `bounds` | `maxStates` (default 50000), `timeoutMs` (default 0, which disables the wall-clock cap), and `maxAlwaysSteps` (default 50). Each is an integer; `maxStates` and `maxAlwaysSteps` are at least 1. |
 | `assumptions` | Strings copied into the report. |
 | `citations` | Guard name, action name, or transition (edge id) to a `"path:line"` or `"path:line-line"` string, or a list of them. A name that is not in the model or rules file stops checking. |
 
 Startup guard exploration also uses `maxStates` as its replay budget and checks
 the wall-clock deadline before each replay. Reaching either limit leaves startup
 exploration incomplete.
+
+After startup, one event from one state may replay at most 1024 times to split
+unresolved guards, and the wall-clock deadline is checked before each replay.
+Reaching either limit leaves exploration incomplete. A state cut off before all
+of its events were tried is not reported as a dead end.
+
+Rule evaluation gets its own `timeoutMs` window after exploration, checked on
+every state a rule visits. The rule running when it expires and every later rule
+are `not-checked`, and the reason is in `checker.bounds.ruleIncompleteReason`.
+Rules decided earlier keep their verdicts. Stored counterexamples hold at most
+200000 states in total. A broken rule past that budget keeps its `broken`
+outcome without a counterexample, its reason says so, and the failing state
+still lists it in `violations`.
 
 When exploration stops early at a bound, unproved rules are `not-checked` and the
 reason is in `checker.bounds.incompleteReason`.
@@ -208,13 +230,45 @@ broken, and `2` when any rule is `not-checked`, exploration is incomplete, or th
 checker errors. When rules are both broken and `not-checked`, the exit code is
 `1`; read each rule's outcome in the report.
 
+## Rules on the model
+
+A saved model can hold its rules on the acceptance criteria of its requirements
+(`data.statelySpec`). Each criterion takes an optional `rule` with the fields of
+a rules-file rule except `id` and `description`:
+
+```json
+{
+  "id": "never-open-locked",
+  "text": "The door is never open while locked.",
+  "rule": { "kind": "never", "when": "in('open') && locked" }
+}
+```
+
+When no rules file is passed (no `--rules` and no `<model>.rules.json` beside
+the model), the checker builds one from the model:
+
+- Each rule on an acceptance criterion of a requirement that is not retired,
+  with id `<requirement id>/<criterion id>` and the criterion text as its
+  description.
+- A context domain for each field of the context schema (`data.schemas.context`)
+  that has an initial value in `data.context`: `integer` with `minimum` and
+  `maximum` becomes `{ min, max }`, `boolean` becomes `"bool"`, and `enum`
+  becomes its list of values.
+- Guards and actions from the model's implementations, as with a rules file.
+
+A rules file, when passed, is used as is. The result binds only the model, and
+`inputs/rules.json` holds the rules built from it. Save rules with
+`save_stately_models` requirements; `rule: null` removes one.
+
 ## Hosted checking
 
 When the host cannot run commands, the `check_machine` MCP tool (hosted API
 route `/api/v1/check`) runs the same native checker with host limits: at most
-20000 states and 10 s. It takes `machine` (an XGraph or XState config, as an
+20000 states and 10 s of exploration, plus a separate 10 s window for rule
+evaluation. It takes `machine` (an XGraph or XState config, as an
 object or JSON text) plus `format`, or `source` as in `simulate_machine`, and
-`rules` (the rules-file object), with optional `limits`. It returns per-rule
+`rules` (the rules-file object; omit it to use the rules on the model), with
+optional `limits`. It returns per-rule
 verdicts, native traces, and a graph carrying the report. Save that graph with
 `save_stately_check_result`. TLA+ is not available hosted.
 

@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { basename, join, resolve } from 'node:path';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { realpathSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { artifact, parseCheckResult, resultToXGraph } from './check-result.mjs';
+import { workspacePath } from './workspace-path.mjs';
 import { importTlcTrace, importTlcDot } from './tlc-import.mjs';
 import { exportNativeTla, moduleName } from './native-tla.mjs';
+import { exportNativeLean } from './native-lean.mjs';
 
 const readText = async (path) =>
   new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
@@ -26,7 +28,7 @@ const usage = `Usage:
   stately-check.mjs freshness RESULT_JSON [--workspace DIRECTORY]
   stately-check.mjs record-app-checks GRAPH_JSON CHECKS_JSON NEW_GRAPH_JSON
   stately-check.mjs view RESULT_JSON [--trace ID ...] --out XGRAPH_JSON
-  stately-check.mjs export MODEL_JSON RULES_JSON NEW_OUTPUT_DIR [--module NAME]
+  stately-check.mjs export MODEL_JSON RULES_JSON NEW_OUTPUT_DIR [--module NAME] [--format tla|lean]
 Output paths must not already exist. See references/formal-checking.md.`;
 const usageError = () => Object.assign(Error(usage), { code: 'USAGE' });
 const messages = {
@@ -213,7 +215,7 @@ export async function main(args) {
       sha256: (await import('./check-result.mjs')).sha256(content),
     };
     const recheck = result.recheck
-      ? { ...result.recheck, resultPath: resolve(paths[0]) }
+      ? { ...result.recheck, resultPath: workspacePath(paths[0]) }
       : undefined;
     await writeJson(
       paths[1],
@@ -225,18 +227,31 @@ export async function main(args) {
     const { values, positionals } = parseArgs({
       args: paths,
       allowPositionals: true,
-      options: { module: { type: 'string' } },
+      options: { module: { type: 'string' }, format: { type: 'string' } },
     });
     if (positionals.length !== 3) throw usageError();
+    const format = values.format ?? 'tla';
+    if (format !== 'tla' && format !== 'lean') throw usageError();
     const [modelPath, rulesPath, output] = positionals;
     const module =
       values.module ??
       moduleName(basename(modelPath).replace(/\.json$/, ''));
-    const result = exportNativeTla({
+    const input = {
       model: JSON.parse(await readText(modelPath)),
       rules: JSON.parse(await readText(rulesPath)),
       module,
-    });
+    };
+    if (format === 'lean') {
+      const result = exportNativeLean(input);
+      await mkdir(output);
+      await writeFile(join(output, `${module}.lean`), result.source, { flag: 'wx' });
+      await writeJson(join(output, 'manifest.json'), result.manifest);
+      console.log(
+        JSON.stringify({ module, format, out: output, rules: result.manifest.rules.length }),
+      );
+      return;
+    }
+    const result = exportNativeTla(input);
     await mkdir(output);
     await writeFile(join(output, `${module}.tla`), result.spec, { flag: 'wx' });
     await writeFile(join(output, `${module}.cfg`), result.config, {

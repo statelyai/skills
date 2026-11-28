@@ -4,9 +4,10 @@ import { lstat, mkdir, readFile, readdir, realpath, stat, writeFile } from 'node
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
 import { artifact, parseCheckResult } from './check-result.mjs';
+import { workspaceName, workspacePath } from './workspace-path.mjs';
 import { attachReport } from './checked-view.mjs';
 import { completeHumanReport, parseCheckScope } from './check-scope.mjs';
-import { CHECKER_NAME, CHECKER_VERSION, check, checkReport, humanReport, loadCachedXState, nativeCheckExitCode, nativeGraph } from './native-check.mjs';
+import { CHECKER_NAME, CHECKER_VERSION, check, checkReport, humanReport, loadCachedXState, nativeCheckExitCode, nativeGraph, rulesFromModel } from './native-check.mjs';
 
 const text = async (file) =>
   new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(await readFile(file));
@@ -74,26 +75,28 @@ export async function runNativeCheck({ model, rules, scope, out, offline = false
   if (!model?.endsWith('.json')) throw Error('Pass a native model .json file (or a .tla specification for TLC).');
   const modelPath = resolve(model);
   await requireFile(modelPath, 'Model');
+  const modelContent = await text(modelPath);
   const defaultRules = modelPath.replace(/\.json$/, '.rules.json');
-  if (!rules && !(await isFile(defaultRules)))
+  // Without a rules file, rules stored on the model's acceptance criteria are used.
+  const modelRules = !rules && !(await isFile(defaultRules)) ? rulesFromModel(JSON.parse(modelContent)) : null;
+  if (!rules && !modelRules && !(await isFile(defaultRules)))
     throw Object.assign(
-      Error(`Rules file not found: ${defaultRules}. Pass --rules RULES.json; the default is <model>.rules.json beside the model.`),
+      Error(`Rules file not found: ${defaultRules}. Pass --rules RULES.json (the default is <model>.rules.json beside the model), or add rules to the model's acceptance criteria.`),
       { code: 'ENOENT', path: defaultRules },
     );
-  const rulesPath = resolve(rules ?? defaultRules);
-  await requireFile(rulesPath, 'Rules');
+  const rulesPath = modelRules ? null : resolve(rules ?? defaultRules);
+  if (rulesPath) await requireFile(rulesPath, 'Rules');
   const scopePath = scope ? resolve(scope) : undefined;
   if (scopePath) await requireFile(scopePath, 'Scope');
   for (const file of sources) await requireFile(resolve(file), 'Source');
   const output = await emptyOutput(resolve(out ?? modelPath.replace(/\.json$/, '-check')));
 
-  const modelContent = await text(modelPath);
-  const rulesContent = await text(rulesPath);
+  const rulesContent = rulesPath ? await text(rulesPath) : JSON.stringify(modelRules, null, 2) + '\n';
   const scopeContent = scopePath ? await text(scopePath) : undefined;
   const parsedScope = scopeContent === undefined ? undefined : parseCheckScope(JSON.parse(scopeContent));
   const run = check({
     model: JSON.parse(modelContent),
-    rules: JSON.parse(rulesContent),
+    rules: rulesPath ? JSON.parse(rulesContent) : undefined,
     modelContent,
     rulesContent,
     modelPath: 'inputs/model.json',
@@ -102,18 +105,18 @@ export async function runNativeCheck({ model, rules, scope, out, offline = false
   });
   const result = run.result;
   const recheck = {
-    specPath: modelPath,
-    configPath: rulesPath,
-    modelPath,
-    rulesPath,
-    ...(scopePath ? { scopePath } : {}),
-    workingDirectory: process.cwd(),
-    sourcePaths: sources.map((file) => resolve(file)),
+    specPath: workspacePath(modelPath),
+    configPath: workspacePath(rulesPath ?? modelPath),
+    modelPath: workspacePath(modelPath),
+    ...(rulesPath ? { rulesPath: workspacePath(rulesPath) } : {}),
+    ...(scopePath ? { scopePath: workspacePath(scopePath) } : {}),
+    workingDirectory: workspaceName(),
+    sourcePaths: sources.map((file) => workspacePath(file)),
     sourceFiles: [
       { path: 'inputs/model.json', sourcePath: posix(modelPath) },
-      { path: 'inputs/rules.json', sourcePath: posix(rulesPath) },
+      ...(rulesPath ? [{ path: 'inputs/rules.json', sourcePath: posix(rulesPath) }] : []),
     ],
-    resultPath: join(output, 'check-result.json'),
+    resultPath: workspacePath(join(output, 'check-result.json')),
   };
   const bind = (role, path, file, content) => {
     result.binding.artifacts.push(artifact(role, path, content));
@@ -166,7 +169,7 @@ export async function runNativeCheck({ model, rules, scope, out, offline = false
   const exit = nativeCheckExitCode(checked);
   await mkdir(join(output, 'inputs'), { recursive: true });
   await writeFile(join(output, 'inputs/model.json'), await readFile(modelPath), { flag: 'wx' });
-  await writeFile(join(output, 'inputs/rules.json'), await readFile(rulesPath), { flag: 'wx' });
+  await writeFile(join(output, 'inputs/rules.json'), rulesPath ? await readFile(rulesPath) : rulesContent, { flag: 'wx' });
   if (scopePath) await writeFile(join(output, 'inputs/check-scope.json'), await readFile(scopePath), { flag: 'wx' });
   await writeJson(join(output, 'check-result.json'), checked);
   await writeFile(join(output, 'report.md'), report, { flag: 'wx' });

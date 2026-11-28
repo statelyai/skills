@@ -216,6 +216,13 @@ export function evaluate(ast, scope) {
 //   edge { id, sourceId, targetIds[], eventType, guard, actions[], internal, order }
 // ---------------------------------------------------------------------------
 
+// Editor XGraphs name state completion `@statelyai.state.done.<node id>` (legacy
+// `@stately.`); the checker and exporter use the XState event type.
+const canonicalEventType = (eventType) => eventType.replace(/^@stately(?:ai)?\.state\.done\./, 'xstate.done.state.');
+
+// Built-in actions that enqueue an event change the macrostep; neither engine models them.
+const EVENT_QUEUE_ACTIONS = new Set(['xstate.raise', 'raise']);
+
 function normalizeXGraph(graph) {
   if (!Array.isArray(graph.nodes) || !Array.isArray(graph.edges))
     fail('XGraph needs nodes and edges arrays');
@@ -241,19 +248,28 @@ function normalizeXGraph(graph) {
       always: [],
     });
   }
-  const edges = graph.edges.map((edge, order) => ({
+  // Graph-level startup applies where node data names no initial child; the root id
+  // itself means no startup override.
+  const startup = typeof graph.initialNodeId === 'string' ? nodes.get(graph.initialNodeId) : undefined;
+  for (let child = startup, parent = startup && nodes.get(startup.parentId); parent; child = parent, parent = nodes.get(parent.parentId))
+    parent.initialId ??= child.id;
+  const edges = graph.edges.map((edge, order) => {
+    if (edge.data?.context != null)
+      fail(`edge ${edge.id} updates context in its transition; move the update to a named action with an assignment in the rules file`);
+    return {
     id: edge.id,
     sourceId: edge.sourceId,
     targetIds:
       edge.data?.transitionType === 'targetless'
         ? []
         : [edge.targetId, ...(edge.data?.additionalTargetIds ?? [])].filter(Boolean),
-    eventType: edge.data?.eventType ?? '',
+    eventType: canonicalEventType(edge.data?.eventType ?? ''),
     guard: edge.data?.guard ?? null,
     actions: actions(edge.data?.actions, `edge ${edge.id}`),
     reenter: edge.data?.transitionType === 'reenter',
     order,
-  }));
+    };
+  });
   const implementations = record(graph.data?.implementations) ? graph.data.implementations : {};
   const initialContext = record(graph.data?.context) ? graph.data.context : {};
   return finishTree(nodes, edges, initialContext, implementations);
@@ -363,7 +379,16 @@ function finishTree(nodes, edges, initialContext = {}, implementations = {}) {
         fail(`initial ${node.initialId} is not a child of ${node.id}`);
     }
   }
+  const rejectQueued = (list, owner) => {
+    const queued = list.find((action) => EVENT_QUEUE_ACTIONS.has(action.type));
+    if (queued) fail(`${owner}: ${queued.type} raises an event inside the macrostep, which is not supported`);
+  };
+  for (const node of nodes.values()) {
+    rejectQueued(node.entry, `node ${node.id} entry`);
+    rejectQueued(node.exit, `node ${node.id} exit`);
+  }
   for (const edge of edges) {
+    rejectQueued(edge.actions, `edge ${edge.id}`);
     if (!nodes.has(edge.sourceId)) fail(`edge ${edge.id} has unknown source`);
     for (const target of edge.targetIds)
       if (!nodes.has(target)) fail(`edge ${edge.id} has unknown target ${target}`);
@@ -488,6 +513,22 @@ export function extractImplementations(model) {
   return { guards, actions, skipped };
 }
 
+/**
+ * Adds the guards and assignments extracted from the model's inline implementations
+ * to `rules`; rules-file expressions take precedence. Shared by the checker and the
+ * exporters so all of them read the same expressions.
+ */
+export function mergeImplementations(model, rules) {
+  const extracted = extractImplementations(model);
+  for (const [name, ast] of Object.entries(extracted.guards)) rules.guards[name] ??= ast;
+  for (const [name, pairs] of Object.entries(extracted.actions)) {
+    if (rules.actions[name]) continue;
+    for (const [variable] of pairs) if (!rules.domains[variable]) fail(`extracted action ${name} assigns ${variable}, which has no context domain (declare it in rules.context)`);
+    rules.actions[name] = pairs;
+  }
+  return extracted;
+}
+
 export function normalizeModel(input) {
   if (!record(input)) fail('model must be a JSON object');
   if (Array.isArray(input.nodes) && Array.isArray(input.edges)) return normalizeXGraph(input);
@@ -500,6 +541,11 @@ export function normalizeModel(input) {
 // ---------------------------------------------------------------------------
 
 const RULE_KINDS = ['never', 'initially', 'eventually', 'eventually-always', 'leads-to', 'no-dead-ends', 'reachable'];
+// Work budgets that keep one small request from running unbounded inside a single step
+// or rule loop, where the per-state maxStates and timeoutMs checks do not reach.
+export const MAX_RULES = 1000;
+export const MAX_STEP_REPLAYS = 1024; // guard case-split replays for one event from one state
+export const MAX_COUNTEREXAMPLE_STEPS = 200_000; // total states across all stored counterexamples
 
 export function parseRules(input) {
   if (!record(input)) fail('rules must be a JSON object');
@@ -560,6 +606,13 @@ export function parseRules(input) {
     citations[name] = list;
   }
   if (!init.length || !init.every(record)) fail('init must be an object or a non-empty list of objects');
+  if (input.bounds !== undefined && !record(input.bounds)) fail('bounds must be an object');
+  // Exporters write bounds into generated source, so they must be plain integers.
+  const bound = (key, fallback, min) => {
+    const value = input.bounds?.[key] ?? fallback;
+    if (!Number.isSafeInteger(value) || value < min) fail(`bounds.${key} must be an integer of at least ${min}`);
+    return value;
+  };
   return {
     domains,
     init,
@@ -569,10 +622,10 @@ export function parseRules(input) {
     rules,
     fairness,
     bounds: {
-      maxStates: input.bounds?.maxStates ?? 50_000,
-      maxAlwaysSteps: input.bounds?.maxAlwaysSteps ?? 50,
+      maxStates: bound('maxStates', 50_000, 1),
+      maxAlwaysSteps: bound('maxAlwaysSteps', 50, 1),
       // Wall-clock cap for exploration; hosted callers set it. 0 disables it.
-      timeoutMs: input.bounds?.timeoutMs ?? 0,
+      timeoutMs: bound('timeoutMs', 0, 0),
     },
     assumptions: input.assumptions ?? [],
     citations,
@@ -908,7 +961,7 @@ class Engine {
    * context, edgeIds, unresolved }]. Guards without an expression are case-split by
    * rerunning with every requested assumption.
    */
-  step(state, eventType, payload, { keepIgnored = false } = {}) {
+  step(state, eventType, payload, { keepIgnored = false, canReplay } = {}) {
     const results = [];
     caseSplit((assume) => {
       this.current = state.configuration;
@@ -941,7 +994,7 @@ class Engine {
         assume,
       });
       return this.collector.wanted;
-    });
+    }, canReplay);
     return results;
   }
 }
@@ -1009,19 +1062,62 @@ function components(byId, startIds, inside) {
  * `ensureXState` in toolchain.mjs, imported by the caller); without it the module is
  * resolved next to graph-tools or the skill.
  */
+// ---------------------------------------------------------------------------
+// Rules stored on the model. Acceptance criteria in `data.statelySpec` carry a
+// rule each; context domains come from `data.schemas.context`, a map of property
+// JSON Schemas (or a root object schema), for integer with minimum and maximum,
+// boolean, or enum fields with an initial
+// value in `data.context`. Guards and actions are
+// extracted from implementations by prepare(), as for a rules file.
+// ---------------------------------------------------------------------------
+
+function schemaDomains(schema, initialContext) {
+  const domains = {};
+  if (!record(schema)) return domains;
+  // The editor stores a map of property schemas; a root object schema also works.
+  const properties = schema.type === 'object' && record(schema.properties) ? schema.properties : schema;
+  for (const [name, property] of Object.entries(properties)) {
+    // A domain needs an initial value; fields missing from the initial context stay out.
+    if (!record(property) || !Object.hasOwn(initialContext, name)) continue;
+    if (Array.isArray(property.enum) && property.enum.length && property.enum.every((value) => ['string', 'number', 'boolean'].includes(typeof value)))
+      domains[name] = property.enum;
+    else if (property.type === 'boolean') domains[name] = 'bool';
+    else if (property.type === 'integer' && Number.isInteger(property.minimum) && Number.isInteger(property.maximum) && property.minimum <= property.maximum)
+      domains[name] = { min: property.minimum, max: property.maximum };
+  }
+  return domains;
+}
+
+/**
+ * A rules file built from the rules on a model's acceptance criteria, or null
+ * when no criterion has one. Retired requirements are skipped. Each rule id is
+ * `<requirement id>/<criterion id>`.
+ */
+export function rulesFromModel(model) {
+  const spec = record(model?.data?.statelySpec) ? model.data.statelySpec : null;
+  const rules = [];
+  for (const requirement of Array.isArray(spec?.requirements) ? spec.requirements : []) {
+    if (!record(requirement) || requirement.status === 'retired') continue;
+    for (const criterion of Array.isArray(requirement.acceptance) ? requirement.acceptance : [])
+      if (record(criterion) && record(criterion.rule))
+        rules.push({ ...criterion.rule, id: `${requirement.id}/${criterion.id}`, description: criterion.text });
+  }
+  if (!rules.length) return null;
+  const context = schemaDomains(model.data.schemas?.context, record(model.data.context) ? model.data.context : {});
+  return { ...(Object.keys(context).length ? { context } : {}), rules };
+}
+
+// Only an omitted rules file falls back to the model; null is invalid rules input.
+const resolveRules = (modelInput, rulesInput) =>
+  rulesInput !== undefined ? rulesInput : rulesFromModel(modelInput) ?? fail('no rules: pass a rules file, or add rules to the acceptance criteria of the model\'s requirements');
+
 export function prepare({ model: modelInput, rules: rulesInput, xstate, limits }) {
   const model = normalizeModel(modelInput);
-  const rules = parseRules(rulesInput);
+  const rules = parseRules(resolveRules(modelInput, rulesInput));
   // `limits` lets a host cap the run below what the rules file asks for.
   if (limits?.maxStates) rules.bounds.maxStates = Math.min(rules.bounds.maxStates, limits.maxStates);
   if (limits?.timeoutMs) rules.bounds.timeoutMs = rules.bounds.timeoutMs ? Math.min(rules.bounds.timeoutMs, limits.timeoutMs) : limits.timeoutMs;
-  const extracted = extractImplementations(model);
-  for (const [name, ast] of Object.entries(extracted.guards)) rules.guards[name] ??= ast;
-  for (const [name, pairs] of Object.entries(extracted.actions)) {
-    if (rules.actions[name]) continue;
-    for (const [variable] of pairs) if (!rules.domains[variable]) fail(`extracted action ${name} assigns ${variable}, which has no context domain (declare it in rules.context)`);
-    rules.actions[name] = pairs;
-  }
+  const extracted = mergeImplementations(model, rules);
   const stateReferences = validateStateReferences(model, rules);
   validateCitations(model, rules);
   const diagnostics = { unresolvedGuards: new Set(), unresolvedActions: new Set(), unresolvedEdges: new Set(), extracted };
@@ -1041,9 +1137,16 @@ export function prepare({ model: modelInput, rules: rulesInput, xstate, limits }
   return { model, rules, diagnostics, engine, stateReferences, initialContexts, project, extracted };
 }
 
-export function check({ model: modelInput, rules: rulesInput, modelContent, rulesContent, modelPath = 'model.json', rulesPath = 'rules.json', xstate, limits }) {
-  const started = performance.now();
+// `clock` lets tests drive the time limits deterministically.
+export function check({ model: modelInput, rules: suppliedRules, modelContent, rulesContent, modelPath = 'model.json', rulesPath = 'rules.json', xstate, limits, clock = () => performance.now() }) {
+  const started = clock();
+  // Rules derived from the model are bound through the model artifact.
+  const fromModel = suppliedRules === undefined;
+  const rulesInput = resolveRules(modelInput, suppliedRules);
   const { model, rules, diagnostics, engine, initialContexts, project, extracted } = prepare({ model: modelInput, rules: rulesInput, xstate, limits });
+  // Evaluating rules is the only place the rule count costs work; TLA export and
+  // trace conformance parse the same file without this cap.
+  if (rules.rules.length > MAX_RULES) fail(`rules.rules lists ${rules.rules.length} rules; the limit is ${MAX_RULES}`);
 
   const states = []; // { id, snapshot, configuration, context, initial, boundary, steps: [{to, edgeIds, event, unresolved}], unresolved }
   const index = new Map();
@@ -1080,7 +1183,7 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
       incompleteReason = `startup exploration hit maxStates replay budget (${rules.bounds.maxStates})`;
       return false;
     }
-    if (rules.bounds.timeoutMs && performance.now() - started > rules.bounds.timeoutMs) {
+    if (rules.bounds.timeoutMs && clock() - started > rules.bounds.timeoutMs) {
       complete = false;
       incompleteReason = `startup exploration hit the ${rules.bounds.timeoutMs} ms time limit`;
       return false;
@@ -1097,7 +1200,28 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
     if (!complete) break;
   }
   const eventAlphabet = model.events;
-  for (let cursor = 0; cursor < states.length; cursor++) {
+  const timedOut = () => rules.bounds.timeoutMs && clock() - started > rules.bounds.timeoutMs;
+  // Unresolved guards in many parallel regions split one step 2^n ways, so each step gets
+  // its own replay budget and the deadline is checked on every replay.
+  let stepReplays = 0;
+  let stepCut = false;
+  const canStepReplay = () => {
+    if (stepReplays >= MAX_STEP_REPLAYS) {
+      stepCut = true;
+      complete = false;
+      incompleteReason = `one step needed more than ${MAX_STEP_REPLAYS} guard case-split replays after ${states.length} states`;
+      return false;
+    }
+    if (timedOut()) {
+      stepCut = true;
+      complete = false;
+      incompleteReason = `exploration hit the ${rules.bounds.timeoutMs} ms time limit after ${states.length} states`;
+      return false;
+    }
+    stepReplays++;
+    return true;
+  };
+  explore: for (let cursor = 0; cursor < states.length; cursor++) {
     const state = states[cursor];
     if (states.length > rules.bounds.maxStates) {
       complete = false;
@@ -1105,26 +1229,42 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
       break;
     }
     if (state.boundary) continue;
-    if (rules.bounds.timeoutMs && performance.now() - started > rules.bounds.timeoutMs) {
+    if (timedOut()) {
       complete = false;
       incompleteReason = `exploration hit the ${rules.bounds.timeoutMs} ms time limit after ${states.length} states`;
       break;
     }
+    const stepKeys = new Set();
     for (const event of eventAlphabet) {
       const payloads = rules.events[event] ?? [undefined];
       for (const payload of payloads) {
-        for (const result of engine.step(state, event, payload)) {
+        stepReplays = 0;
+        for (const result of engine.step(state, event, payload, { canReplay: canStepReplay })) {
           const to = intern(result);
           const label = payload === undefined ? event : `${event} ${JSON.stringify(payload)}`;
-          if (!state.steps.some((step) => step.to === to && step.event === label && step.edgeIds.join() === result.edgeIds.join()))
-            state.steps.push({ to, event: label, eventType: event, edgeIds: result.edgeIds, unresolved: result.unresolved });
+          const stepKey = JSON.stringify([to, label, result.edgeIds]);
+          if (stepKeys.has(stepKey)) continue;
+          stepKeys.add(stepKey);
+          state.steps.push({ to, event: label, eventType: event, edgeIds: result.edgeIds, unresolved: result.unresolved });
         }
+        // Only this step's own cutoff stops here; an earlier startup cutoff keeps exploring.
+        if (stepCut) break explore;
       }
     }
+    // A state cut off mid-expansion has partial steps, so it is not evidence of a dead end.
+    state.expanded = true;
   }
   const explored = states;
 
+  // Rule evaluation has its own timeoutMs window. Every state visit and predicate
+  // evaluation checks it, so one expensive rule cannot overrun the window.
+  const RULE_DEADLINE = Symbol('rule deadline');
+  let ruleDeadline = Infinity;
+  const tick = () => {
+    if (clock() > ruleDeadline) throw RULE_DEADLINE;
+  };
   const evalIn = (state, expression) => {
+    tick();
     try {
       return Boolean(evaluate(expression, engine.scope(state.configuration, state.context, undefined)));
     } catch (error) {
@@ -1153,6 +1293,7 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
     );
     for (const id of queue) parent.set(id, null);
     while (queue.length) {
+      tick();
       const id = queue.shift();
       if (targetPredicate(byId(id))) {
         const path = [];
@@ -1170,6 +1311,7 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
     const parent = new Map([[entry, null]]);
     const queue = [entry];
     while (queue.length) {
+      tick();
       const id = queue.shift();
       for (const step of byId(id).steps) {
         if (!members.has(step.to)) continue;
@@ -1193,6 +1335,7 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
     const queue = [...startIds].filter((id) => inside(byId(id)));
     for (const id of queue) region.add(id);
     while (queue.length) {
+      tick();
       const id = queue.shift();
       for (const step of byId(id).steps) if (inside(byId(step.to)) && !region.has(step.to)) region.add(step.to), queue.push(step.to);
     }
@@ -1201,12 +1344,13 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
       const path = shortestPath((state) => reachable(state.id) && !state.boundary && loopBad(new Set([state.id])));
       return path && { path, loopStart: path.length - 1, stutters: true, stuck: false };
     }
-    const dead = shortestPath((state) => reachable(state.id) && !state.boundary && !state.steps.length && loopBad(new Set([state.id])));
+    const dead = shortestPath((state) => reachable(state.id) && state.expanded && !state.boundary && !state.steps.length && loopBad(new Set([state.id])));
     if (dead) return { path: dead, loopStart: dead.length - 1, stutters: true, stuck: true };
     const bad = components(byId, [...region], (state) => reachable(state.id) && !state.boundary)
       .filter((component) => component.nontrivial && loopBad(component.members) && fairLoop(component.members));
     let best = null;
     for (const component of bad) {
+      tick();
       const prefix = shortestPath((state) => component.members.has(state.id));
       if (!prefix || (best && prefix.length >= best.prefix.length)) continue;
       best = { prefix, component };
@@ -1221,6 +1365,8 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
 
   const ruleResults = [];
   const counterexamples = [];
+  let counterexampleSteps = 0;
+  const omittedViolations = []; // [stateId, ruleId] for broken rules whose trace was omitted
   const anyUnresolved = diagnostics.unresolvedGuards.size + diagnostics.unresolvedActions.size > 0;
   // Unresolved guards are explored both ways (a true over-approximation, so safety that holds
   // is sound). An unresolved assignment keeps the old value, which under-approximates: no
@@ -1238,7 +1384,13 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
       nativeKind: rule.kind,
     };
     ruleResults.push(entry);
+    if (path && outcome === 'broken' && counterexampleSteps + path.path.length > MAX_COUNTEREXAMPLE_STEPS) {
+      entry.reason = `${reason ? `${reason}; ` : ''}counterexample omitted: stored counterexamples reached the ${MAX_COUNTEREXAMPLE_STEPS}-state budget`;
+      omittedViolations.push([path.path.at(-1), entry.id]);
+      return entry;
+    }
     if (path && outcome === 'broken') {
+      counterexampleSteps += path.path.length;
       const transitions = [];
       for (let i = 0; i + 1 < path.path.length; i++) {
         const step = edgeBetween(path.path[i], path.path[i + 1]);
@@ -1260,94 +1412,111 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
     `unresolved guards/actions: ${[...diagnostics.unresolvedGuards, ...diagnostics.unresolvedActions].join('; ')}`;
   const undecidable = (expression) => explored.some((state) => evalIn(state, expression) === null);
 
+  // Rule evaluation gets its own timeoutMs window so a slow exploration still leaves
+  // time to report the rules it can decide.
+  if (rules.bounds.timeoutMs) ruleDeadline = clock() + rules.bounds.timeoutMs;
+  let ruleIncompleteReason;
   for (const rule of rules.rules) {
-    if (rule.kind === 'never') {
-      const forbidden = (state) => evalIn(state, rule.then) === true;
-      // A fully resolved path proves the violation even when a shorter uncertain path exists.
-      const certain = shortestPath(forbidden, true);
-      const path = certain ?? shortestPath(forbidden);
-      if (certain) emit(rule, 'broken', undefined, { path: certain });
-      else if (path) emit(rule, 'not-checked', `a path reaches the forbidden condition but crosses ${unresolvedNote()}; it may be spurious`);
-      else if (undecidable(rule.then)) emit(rule, 'not-checked', 'the predicate references unknown variables in some state');
-      else if (!complete) emit(rule, 'not-checked', incompleteReason);
-      else if (underApproximated) emit(rule, 'not-checked', `an unresolved assignment kept a stale value; ${unresolvedNote()}`);
-      else emit(rule, 'holds', anyUnresolved ? `holds under over-approximation of ${unresolvedNote()}` : undefined);
-    } else if (rule.kind === 'initially') {
-      const initials = explored.filter((state) => state.initial);
-      const values = initials.map((state) => evalIn(state, rule.then));
-      if (values.includes(null)) emit(rule, 'not-checked', 'the predicate references unknown variables in an initial state');
-      else {
-        const failing = initials.filter((_, index) => values[index] === false);
-        const certain = failing.find((state) => state.resolvedStart);
-        if (certain) emit(rule, 'broken', 'an initial state does not satisfy the condition', { path: [certain.id] });
-        else if (failing.length) emit(rule, 'not-checked', `only an initial state reached through ${unresolvedNote()} fails the condition; it may be spurious`);
+    if (!ruleIncompleteReason && clock() > ruleDeadline)
+      ruleIncompleteReason = `rule evaluation hit the ${rules.bounds.timeoutMs} ms time limit`;
+    if (ruleIncompleteReason) {
+      emit(rule, 'not-checked', ruleIncompleteReason);
+      continue;
+    }
+    try {
+      if (rule.kind === 'never') {
+        const forbidden = (state) => evalIn(state, rule.then) === true;
+        // A fully resolved path proves the violation even when a shorter uncertain path exists.
+        const certain = shortestPath(forbidden, true);
+        const path = certain ?? shortestPath(forbidden);
+        if (certain) emit(rule, 'broken', undefined, { path: certain });
+        else if (path) emit(rule, 'not-checked', `a path reaches the forbidden condition but crosses ${unresolvedNote()}; it may be spurious`);
+        else if (undecidable(rule.then)) emit(rule, 'not-checked', 'the predicate references unknown variables in some state');
         else if (!complete) emit(rule, 'not-checked', incompleteReason);
-        else if (initials.some((state) => state.unknownStart)) emit(rule, 'not-checked', `an unresolved startup assignment kept a stale value; ${unresolvedNote()}`);
+        else if (underApproximated) emit(rule, 'not-checked', `an unresolved assignment kept a stale value; ${unresolvedNote()}`);
+        else emit(rule, 'holds', anyUnresolved ? `holds under over-approximation of ${unresolvedNote()}` : undefined);
+      } else if (rule.kind === 'initially') {
+        const initials = explored.filter((state) => state.initial);
+        const values = initials.map((state) => evalIn(state, rule.then));
+        if (values.includes(null)) emit(rule, 'not-checked', 'the predicate references unknown variables in an initial state');
+        else {
+          const failing = initials.filter((_, index) => values[index] === false);
+          const certain = failing.find((state) => state.resolvedStart);
+          if (certain) emit(rule, 'broken', 'an initial state does not satisfy the condition', { path: [certain.id] });
+          else if (failing.length) emit(rule, 'not-checked', `only an initial state reached through ${unresolvedNote()} fails the condition; it may be spurious`);
+          else if (!complete) emit(rule, 'not-checked', incompleteReason);
+          else if (initials.some((state) => state.unknownStart)) emit(rule, 'not-checked', `an unresolved startup assignment kept a stale value; ${unresolvedNote()}`);
+          else emit(rule, 'holds');
+        }
+      } else if (rule.kind === 'reachable') {
+        const goal = (state) => evalIn(state, rule.then) === true;
+        if (undecidable(rule.then)) {
+          emit(rule, 'not-checked', 'the predicate references unknown variables in some state');
+          continue;
+        }
+        const certain = shortestPath(goal, true);
+        const path = certain ?? shortestPath(goal);
+        if (certain) emit(rule, 'holds');
+        else if (path) emit(rule, 'not-checked', `only reached through ${unresolvedNote()}`);
+        else if (!complete || anyUnresolved) emit(rule, 'not-checked', complete ? unresolvedNote() : incompleteReason);
+        else emit(rule, 'broken', 'no reachable state satisfies the condition');
+      } else if (rule.kind === 'no-dead-ends') {
+        const path = shortestPath((state) => state.expanded && !state.boundary && !state.steps.length && !(rule.allowFinal && isTerminalFinal(state)));
+        if (path) {
+          if (anyUnresolved) emit(rule, 'not-checked', `a dead end was found but ${unresolvedNote()}`);
+          else emit(rule, 'broken', undefined, { path, loopStart: path.length - 1, stutters: true });
+        } else if (!complete || anyUnresolved) emit(rule, 'not-checked', complete ? unresolvedNote() : incompleteReason);
         else emit(rule, 'holds');
+      } else if (rule.kind === 'eventually' || rule.kind === 'leads-to' || rule.kind === 'eventually-always') {
+        if (!complete) {
+          emit(rule, 'not-checked', incompleteReason);
+          continue;
+        }
+        if (anyUnresolved) {
+          emit(rule, 'not-checked', `liveness needs fully resolved guards and actions; ${unresolvedNote()}`);
+          continue;
+        }
+        if (undecidable(rule.then) || (rule.when && undecidable(rule.when))) {
+          emit(rule, 'not-checked', 'the predicate references unknown variables in some state');
+          continue;
+        }
+        const goal = (state) => evalIn(state, rule.then) === true;
+        const startIds =
+          rule.kind === 'leads-to'
+            ? explored.filter((state) => evalIn(state, rule.when) === true).map((state) => state.id)
+            : explored.filter((state) => state.initial).map((state) => state.id);
+        const found =
+          rule.kind === 'eventually-always'
+            ? // <>[]P fails on a run that keeps leaving P: a loop or dead end with some state outside P.
+              lasso(startIds, () => true, (members) => [...members].some((id) => !goal(byId(id))))
+            : lasso(startIds, (state) => !goal(state));
+        if (!found) {
+          emit(rule, 'holds');
+          continue;
+        }
+        const prefix = rule.kind === 'leads-to' ? shortestPath((state) => state.id === found.path[0]) : [found.path[0]];
+        const path = [...prefix.slice(0, -1), ...found.path];
+        const loopStart = found.loopStart + prefix.length - 1;
+        emit(
+          rule,
+          'broken',
+          found.stutters
+            ? found.stuck
+              ? 'the path ends in a dead end and stutters forever'
+              : 'without fairness the path may stutter forever here'
+            : 'the path loops forever without satisfying the rule',
+          { path, loopStart, stutters: found.stutters },
+        );
       }
-    } else if (rule.kind === 'reachable') {
-      const goal = (state) => evalIn(state, rule.then) === true;
-      if (undecidable(rule.then)) {
-        emit(rule, 'not-checked', 'the predicate references unknown variables in some state');
-        continue;
-      }
-      const certain = shortestPath(goal, true);
-      const path = certain ?? shortestPath(goal);
-      if (certain) emit(rule, 'holds');
-      else if (path) emit(rule, 'not-checked', `only reached through ${unresolvedNote()}`);
-      else if (!complete || anyUnresolved) emit(rule, 'not-checked', complete ? unresolvedNote() : incompleteReason);
-      else emit(rule, 'broken', 'no reachable state satisfies the condition');
-    } else if (rule.kind === 'no-dead-ends') {
-      const path = shortestPath((state) => !state.boundary && !state.steps.length && !(rule.allowFinal && isTerminalFinal(state)));
-      if (path) {
-        if (anyUnresolved) emit(rule, 'not-checked', `a dead end was found but ${unresolvedNote()}`);
-        else emit(rule, 'broken', undefined, { path, loopStart: path.length - 1, stutters: true });
-      } else if (!complete || anyUnresolved) emit(rule, 'not-checked', complete ? unresolvedNote() : incompleteReason);
-      else emit(rule, 'holds');
-    } else if (rule.kind === 'eventually' || rule.kind === 'leads-to' || rule.kind === 'eventually-always') {
-      if (!complete) {
-        emit(rule, 'not-checked', incompleteReason);
-        continue;
-      }
-      if (anyUnresolved) {
-        emit(rule, 'not-checked', `liveness needs fully resolved guards and actions; ${unresolvedNote()}`);
-        continue;
-      }
-      if (undecidable(rule.then) || (rule.when && undecidable(rule.when))) {
-        emit(rule, 'not-checked', 'the predicate references unknown variables in some state');
-        continue;
-      }
-      const goal = (state) => evalIn(state, rule.then) === true;
-      const startIds =
-        rule.kind === 'leads-to'
-          ? explored.filter((state) => evalIn(state, rule.when) === true).map((state) => state.id)
-          : explored.filter((state) => state.initial).map((state) => state.id);
-      const found =
-        rule.kind === 'eventually-always'
-          ? // <>[]P fails on a run that keeps leaving P: a loop or dead end with some state outside P.
-            lasso(startIds, () => true, (members) => [...members].some((id) => !goal(byId(id))))
-          : lasso(startIds, (state) => !goal(state));
-      if (!found) {
-        emit(rule, 'holds');
-        continue;
-      }
-      const prefix = rule.kind === 'leads-to' ? shortestPath((state) => state.id === found.path[0]) : [found.path[0]];
-      const path = [...prefix.slice(0, -1), ...found.path];
-      const loopStart = found.loopStart + prefix.length - 1;
-      emit(
-        rule,
-        'broken',
-        found.stutters
-          ? found.stuck
-            ? 'the path ends in a dead end and stutters forever'
-            : 'without fairness the path may stutter forever here'
-          : 'the path loops forever without satisfying the rule',
-        { path, loopStart, stutters: found.stutters },
-      );
+    } catch (error) {
+      if (error !== RULE_DEADLINE) throw error;
+      // Discard this rule's partial work; rules already decided keep their verdicts.
+      ruleIncompleteReason = `rule evaluation hit the ${rules.bounds.timeoutMs} ms time limit`;
+      emit(rule, 'not-checked', ruleIncompleteReason);
     }
   }
 
-  const elapsedMs = performance.now() - started;
+  const elapsedMs = clock() - started;
   const transitions = [];
   const transitionIds = new Set();
   for (const state of explored)
@@ -1360,6 +1529,7 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
   const brokenRules = new Map();
   for (const path of counterexamples)
     for (const id of path.states.slice(-1)) brokenRules.set(id, [...(brokenRules.get(id) ?? []), path.ruleId]);
+  for (const [id, ruleId] of omittedViolations) brokenRules.set(id, [...(brokenRules.get(id) ?? []), ruleId]);
   const fairnessText =
     rules.fairness.kind === 'none'
       ? 'No fairness: any state may stutter forever, so liveness breaks at the first state where the goal does not hold.'
@@ -1376,6 +1546,7 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
       : []),
     ...(extracted.skipped.length ? [`Inline code outside the supported expression subset stays unresolved: ${extracted.skipped.join('; ')}`] : []),
     ...(anyUnresolved ? [`Unresolved guards/actions explored both ways (over-approximation): ${unresolvedNote()}`] : []),
+    ...(fromModel ? ["Rules come from the model's acceptance criteria; context domains from its context schema."] : []),
     ...rules.assumptions,
   ];
   const result = parseCheckResult({
@@ -1384,13 +1555,13 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
     binding: {
       artifacts: [
         artifact('model', modelPath, modelContent ?? JSON.stringify(modelInput, null, 2) + '\n'),
-        artifact('scope', rulesPath, rulesContent ?? JSON.stringify(rulesInput, null, 2) + '\n'),
+        ...(fromModel ? [] : [artifact('scope', rulesPath, rulesContent ?? JSON.stringify(rulesInput, null, 2) + '\n')]),
       ],
     },
     checker: {
       name: CHECKER_NAME,
       version: CHECKER_VERSION,
-      command: ['native-check', modelPath, rulesPath],
+      command: fromModel ? ['native-check', modelPath] : ['native-check', modelPath, rulesPath],
       complete,
       bounds: {
         maxStates: rules.bounds.maxStates,
@@ -1399,6 +1570,7 @@ export function check({ model: modelInput, rules: rulesInput, modelContent, rule
         events: eventAlphabet,
         exploredStates: explored.length,
         ...(incompleteReason ? { incompleteReason } : {}),
+        ...(ruleIncompleteReason ? { ruleIncompleteReason } : {}),
         boundaryStates: explored.filter((state) => state.boundary).length,
         transitions: transitions.length,
         elapsedMs: Math.round(elapsedMs * 100) / 100,
@@ -1584,17 +1756,18 @@ export async function main(argv) {
     allowPositionals: true,
     options: { out: { type: 'string' }, json: { type: 'boolean' }, offline: { type: 'boolean' } },
   });
-  if (positionals.length !== 2) fail('usage: native-check MODEL.json RULES.json --out DIR');
+  // Without RULES.json, the rules on the model's acceptance criteria are checked.
+  if (positionals.length < 1 || positionals.length > 2) fail('usage: native-check MODEL.json [RULES.json] --out DIR');
   const [modelPath, rulesPath] = positionals;
   const modelContent = await readFile(modelPath, 'utf8');
-  const rulesContent = await readFile(rulesPath, 'utf8');
+  const rulesContent = rulesPath === undefined ? undefined : await readFile(rulesPath, 'utf8');
   const run = check({
     model: JSON.parse(modelContent),
-    rules: JSON.parse(rulesContent),
+    rules: rulesContent === undefined ? undefined : JSON.parse(rulesContent),
     modelContent,
     rulesContent,
     modelPath: basename(modelPath),
-    rulesPath: basename(rulesPath),
+    ...(rulesPath === undefined ? {} : { rulesPath: basename(rulesPath) }),
     xstate: await loadCachedXState({ offline: values.offline === true }),
   });
   const graph = nativeGraph(run, JSON.parse(modelContent));

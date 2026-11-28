@@ -197,7 +197,7 @@ checker artifacts remain unchanged. Keep complete test output locally and cite
 it. Model playback and application tests stay distinct.
 
 `freshness` resolves `recheck.sourceFiles` inside the chosen physical workspace
-using that workspace as the base for relative source paths, and emits ready-to-use `currentArtifacts` for `get_stately_check_result`. Select the equivalent project root to compare a moved or second checkout; the recorded original working directory remains provenance. Missing
+using that workspace as the base for relative source paths, and emits ready-to-use `currentArtifacts` for `get_stately_check_result`. Select the equivalent project root to compare a moved or second checkout. All `recheck` paths are relative to the workspace root, and `recheck.workingDirectory` is only the workspace folder name; Stately never stores absolute local paths and strips them from older reports. Missing
 files are stale; absent mappings remain unknown. It rejects traversal and
 symlink escapes instead of following paths into another checkout. The explicit workspace argument selects both the coordinate root and permitted reads. Never broaden
 the workspace just to satisfy a saved path. Compared hashes describe that point
@@ -286,7 +286,13 @@ a variable bounded by the declared domain (`CONSTRAINT InDomain`). An event is
 one TLA+ action that applies the selected transitions, then eventless
 transitions and state completion events until nothing more is enabled. Guards,
 assignments, entry and exit actions, payload fields, and `in()` translate from
-the rules expression grammar. Rule kinds map as follows:
+the rules expression grammar, together with the inline guards and assignments the
+native checker reads from the model. Each microstep follows XState v6: exit
+actions run first, then each selected transition's assignments, which read the
+context from before the microstep and replace the context in document order,
+then entry actions. State completion events queue in entry order and have type
+`xstate.done.state`. An unhandled event still runs eventless transitions, whose
+`in()` checks read the current configuration. Rule kinds map as follows:
 
 | Rule kind                               | TLC                                                                                        |
 | --------------------------------------- | ------------------------------------------------------------------------------------------ |
@@ -302,20 +308,68 @@ for each listed event; `none` adds no fairness.
 Rejected, with the reason in the error: a guard or assignment without an
 expression, history and choice states, `event.*` outside a handler whose event
 declares that payload field, truthiness or mixed-type comparisons, real numbers,
-more than one no-dead-ends rule, and transitions in different parallel regions
-that can fire together with overlapping exit sets. Preserve the model instead of
+more than one no-dead-ends rule, wildcard events (`*` and `prefix.*`),
+transition context updates and `xstate.raise` actions (both also stop the native
+checker), and two transitions that can run in one microstep with overlapping exit
+sets: transitions in different parallel regions for the same event, or eventless
+transitions on a state and on its descendant with a parallel state between them.
+Preserve the model instead of
 deleting semantic fields to force an export; the native checker can still check
 it.
 
 Known differences from the native checker, each documented rather than hidden:
 a liveness counterexample may list a different successor at the boundary of the
 explored states; a self-transition under per-event fairness is a real step for
-TLC but a repeat of the same state for the native checker; when two regions fire
-on one event, TLC runs their actions in document order of the regions, which the
-native checker also does, but action order across regions is not asserted by
-any rule.
+TLC but a repeat of the same state for the native checker.
 
 The `native-tla.test.mjs` suite under `evals/native-check` runs the native checker
 and TLC on the same fixtures and requires identical verdicts and identical
 counterexample lengths. The corpus measurement script `native-tla-measure.mjs`
 does the same for every corpus case.
+
+## Export to Lean
+
+`stately-check export --format lean` writes the same two inputs as one Lean 4
+file. The file uses Lean core only (no Mathlib).
+
+```sh
+sh SKILL_DIR/scripts/stately-check export model.json rules.json new-export --module Checkout --format lean
+lean new-export/Checkout.lean
+```
+
+The output directory holds `<module>.lean` and `manifest.json`. The manifest
+maps every rule to its Lean definition (`rule_<n>`) and records whether the file
+evaluates it.
+
+Encoding: `State` is a configuration bitmask (bit `i` is node `i` in document
+order, listed in the file header) plus a `Ctx` record with one typed field per
+bounded context variable. `step` runs one macrostep with the same semantics as
+the TLA+ export. `Reachable` is the inductive set of states reachable from the
+initial states, where a state outside its domains is recorded but not expanded.
+Each rule becomes a `Bool` predicate on `State`, followed by a comment with the
+theorem it corresponds to. The file does not prove these theorems yet.
+
+To compare verdicts, evaluate the file's `summary`:
+
+```lean
+#eval IO.println Checkout.summary
+```
+
+`summary` explores the reachable states breadth first and prints JSON with the
+explored state count, the count of states outside their domains, and a verdict
+for each `never`, `initially`, `reachable` and `no-dead-ends` rule, keyed by the
+native rule id. Liveness rules (`eventually`, `eventually-always`, `leads-to`)
+are type-checked but not evaluated.
+
+The export uses the same microstep semantics and rejects everything the TLA+
+export rejects, except that it accepts more than one no-dead-ends rule. It also
+rejects values Lean cannot type: a context variable or payload field with mixed value types,
+an initial value that does not match its domain, and an assignment whose type
+differs from its variable. Division by zero gives 0 in Lean; the native checker
+marks that state as outside its domain.
+
+The `native-lean.test.mjs` suite under `evals/native-check` exports every
+corpus model that the native checker fully decides, runs Lean on it, and
+requires the same explored state count, boundary state count and safety
+verdicts. The parity tests run when `lean` is installed (`LEAN`,
+`~/.cache/stately/elan/bin/lean`, or `PATH`) and are skipped otherwise.
