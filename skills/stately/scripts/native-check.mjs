@@ -513,6 +513,22 @@ export function extractImplementations(model) {
   return { guards, actions, skipped };
 }
 
+/**
+ * Adds the guards and assignments extracted from the model's inline implementations
+ * to `rules`; rules-file expressions take precedence. Shared by the checker and the
+ * exporters so all of them read the same expressions.
+ */
+export function mergeImplementations(model, rules) {
+  const extracted = extractImplementations(model);
+  for (const [name, ast] of Object.entries(extracted.guards)) rules.guards[name] ??= ast;
+  for (const [name, pairs] of Object.entries(extracted.actions)) {
+    if (rules.actions[name]) continue;
+    for (const [variable] of pairs) if (!rules.domains[variable]) fail(`extracted action ${name} assigns ${variable}, which has no context domain (declare it in rules.context)`);
+    rules.actions[name] = pairs;
+  }
+  return extracted;
+}
+
 export function normalizeModel(input) {
   if (!record(input)) fail('model must be a JSON object');
   if (Array.isArray(input.nodes) && Array.isArray(input.edges)) return normalizeXGraph(input);
@@ -590,6 +606,13 @@ export function parseRules(input) {
     citations[name] = list;
   }
   if (!init.length || !init.every(record)) fail('init must be an object or a non-empty list of objects');
+  if (input.bounds !== undefined && !record(input.bounds)) fail('bounds must be an object');
+  // Exporters write bounds into generated source, so they must be plain integers.
+  const bound = (key, fallback, min) => {
+    const value = input.bounds?.[key] ?? fallback;
+    if (!Number.isSafeInteger(value) || value < min) fail(`bounds.${key} must be an integer of at least ${min}`);
+    return value;
+  };
   return {
     domains,
     init,
@@ -599,10 +622,10 @@ export function parseRules(input) {
     rules,
     fairness,
     bounds: {
-      maxStates: input.bounds?.maxStates ?? 50_000,
-      maxAlwaysSteps: input.bounds?.maxAlwaysSteps ?? 50,
+      maxStates: bound('maxStates', 50_000, 1),
+      maxAlwaysSteps: bound('maxAlwaysSteps', 50, 1),
       // Wall-clock cap for exploration; hosted callers set it. 0 disables it.
-      timeoutMs: input.bounds?.timeoutMs ?? 0,
+      timeoutMs: bound('timeoutMs', 0, 0),
     },
     assumptions: input.assumptions ?? [],
     citations,
@@ -1094,13 +1117,7 @@ export function prepare({ model: modelInput, rules: rulesInput, xstate, limits }
   // `limits` lets a host cap the run below what the rules file asks for.
   if (limits?.maxStates) rules.bounds.maxStates = Math.min(rules.bounds.maxStates, limits.maxStates);
   if (limits?.timeoutMs) rules.bounds.timeoutMs = rules.bounds.timeoutMs ? Math.min(rules.bounds.timeoutMs, limits.timeoutMs) : limits.timeoutMs;
-  const extracted = extractImplementations(model);
-  for (const [name, ast] of Object.entries(extracted.guards)) rules.guards[name] ??= ast;
-  for (const [name, pairs] of Object.entries(extracted.actions)) {
-    if (rules.actions[name]) continue;
-    for (const [variable] of pairs) if (!rules.domains[variable]) fail(`extracted action ${name} assigns ${variable}, which has no context domain (declare it in rules.context)`);
-    rules.actions[name] = pairs;
-  }
+  const extracted = mergeImplementations(model, rules);
   const stateReferences = validateStateReferences(model, rules);
   validateCitations(model, rules);
   const diagnostics = { unresolvedGuards: new Set(), unresolvedActions: new Set(), unresolvedEdges: new Set(), extracted };

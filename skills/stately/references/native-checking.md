@@ -102,8 +102,8 @@ Unknown top-level keys are rejected. Every key except `rules` is optional.
 | `actions` | Action name to `{ variable: expression }`. Every assigned variable needs a domain. All right-hand sides read the state before the step. |
 | `events` | Event type to `{ "payloads": [ {...}, ... ] }`. Each payload is a separate event. |
 | `fairness` | `"weak"` (default), `"none"`, or `{ "weak": [eventTypes] }`. |
-| `rules` | Non-empty list of rules with unique `id` values. Each rule may carry a `description`. A check evaluates at most 1000 rules and rejects a longer list. TLA+ export and trace conformance do not apply this cap. |
-| `bounds` | `maxStates` (default 50000), `timeoutMs` (default 0, which disables the wall-clock cap), and `maxAlwaysSteps` (default 50). |
+| `rules` | Non-empty list of rules with unique `id` values. Each rule may carry a `description`. A check evaluates at most 1000 rules and rejects a longer list. TLA+ export, Lean export and trace conformance do not apply this cap. |
+| `bounds` | `maxStates` (default 50000), `timeoutMs` (default 0, which disables the wall-clock cap), and `maxAlwaysSteps` (default 50). Each is an integer; `maxStates` and `maxAlwaysSteps` are at least 1. |
 | `assumptions` | Strings copied into the report. |
 | `citations` | Guard name, action name, or transition (edge id) to a `"path:line"` or `"path:line-line"` string, or a list of them. A name that is not in the model or rules file stops checking. |
 
